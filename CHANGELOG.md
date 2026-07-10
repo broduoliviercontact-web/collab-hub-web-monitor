@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.1.0] - 2026-07-10
+
+### Added
+- Control Room performer (route `/control-room`) : capture audio locale, sélection BlackHole/Loopback, vumètre, gain master, publication LiveKit, statut ON AIR, reconnexion, diagnostic ;
+- page publique enrichie d'une section « Direct Audio » (listener LiveKit) ;
+- architecture multi-entry Vite (`index.html` + `control-room.html`, routeur single-entry) ;
+- backend token LiveKit serverless (`api/livekit/token.js`) ;
+- moteur audio local (permission, graphe Web Audio, gain, vumètre) ;
+- publisher LiveKit (connecte le `MediaStream` post-fader à LiveKit) ;
+- reconnexion native (performer et listener) ;
+- diagnostic audio/LiveKit (`?debug=1`, sans secret).
+
+### Changed
+- `src/main.js` devient un routeur (pathname → page publique | Control Room) ;
+- `vercel.json` ajoute le rewrite `/control-room` → `control-room.html` ;
+- `vite.config.js` déclare un second point d'entrée HTML ;
+- `livekitBrowser.js` re-exporte `LocalAudioTrack` + `AudioPresets`.
+
+### Fixed
+- Aucun correctif de code apporté pendant le Lot 4F : la revue de code et les
+  vérifications automatisées n'ont révélé aucun défaut (grants, TTL, contraintes
+  musique, autoplay, reconnexion, secrets). Les tests runtime physiques
+  (Ableton+BlackHole, Chrome/Safari/mobile, coupure réseau, devicechange,
+  qualité audio) restent à valider manuellement — voir
+  `docs/bmad/13-livekit-stabilization-and-release.md`.
+
+### Security
+- tokens LiveKit temporaires (TTL 2 h, `Cache-Control: no-store`) ;
+- secrets serveur uniquement (`LIVEKIT_URL`, `LIVEKIT_API_KEY`,
+  `LIVEKIT_API_SECRET`, `PERFORMER_PASSWORD` — jamais préfixés `VITE_`) ;
+- mot de passe performer jamais stocké / loggué / reflété (transmis uniquement
+  à l'endpoint, vidé après succès) ;
+- listener sans droit de publication (`canPublish:false`) ;
+- performer sans droit de souscription (`canSubscribe:false`) ;
+- contrôle automatique des secrets (`scripts/check-livekit-secrets.mjs` dans
+  `npm run check`).
+
 ## [1.0.1] - 2026-07-10
 
 ### Added

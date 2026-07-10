@@ -382,11 +382,18 @@ Cloud, indépendamment du flux métadonnées Collab-Hub qui reste inchangé.
   cette route.
 
 Détails et configuration Vercel : `docs/bmad/10-livekit-token-and-publisher.md`,
-`docs/bmad/11-livekit-public-listener.md` et
-`docs/bmad/12-control-room-performer.md`. La diffusion n'est **pas** une
-fonctionnalité publique active tant que `VITE_LIVEKIT_ENABLED` reste `false` ;
-la Control Room performer est livrée (Lot 4E) mais reste **en développement**
-(pas de release promise).
+`docs/bmad/11-livekit-public-listener.md`, `docs/bmad/12-control-room-performer.md`
+et `docs/bmad/13-livekit-stabilization-and-release.md`.
+
+**Statut release** : la couche audio est **activée en production**
+(`VITE_LIVEKIT_ENABLED=true`), route `/control-room` en ligne. L'édition
+**v1.1.0 « Live Audio Edition »** est **préparée** (bump version, docs, package,
+CI) avec validation **automatisée + HTTP production** verte et **aucun défaut
+de code observé**. Les **tests runtime physiques** (Ableton+BlackHole, écoute
+réelle, Chrome/Safari/mobile, reconnexion réseau, devicechange, qualité audio)
+restent **à valider manuellement** avant publication « latest stable » — voir la
+checklist GO/NO-GO dans `docs/bmad/13`. La release stable actuelle reste
+**v1.0.1** tant que `v1.1.0` n'est pas taggée.
 
 ## Licence
 
