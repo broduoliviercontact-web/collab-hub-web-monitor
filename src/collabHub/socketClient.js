@@ -2,7 +2,7 @@
 // Préserve : namespace configurable, fallback anonyme (guest 404 -> anonyme),
 // compat serveur 0.3.4, re-observation des headers à chaque (re)connexion.
 import { io } from 'socket.io-client';
-import { KNOWN_HEADERS } from './messageRouter.js';
+import { KNOWN_HEADERS, OBSERVABLE_HEADERS } from './messageRouter.js';
 import { createObserveGuard, wireSocket } from './observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from './authMode.js';
 
@@ -33,6 +33,7 @@ export async function connectCollabHub({ serverUrl, namespace, username, authMod
     socket,
     observeHeaderOnce: guard.observeHeaderOnce,
     observeKnownHeadersOnce: () => guard.observeKnownHeadersOnce(KNOWN_HEADERS),
+    observeObservableHeadersOnce: () => guard.observeKnownHeadersOnce(OBSERVABLE_HEADERS),
     isObserved: guard.isObserved,
     observedCount: guard.observedCount,
     forget: guard.forget,

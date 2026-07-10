@@ -68,6 +68,14 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
 - **Zone 4 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
+- **Zone 5 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
+  tant que le CH-Client est connecté. `connected` (sortie 1 de
+  `route serverMessage connected`) pilote un `toggle` qui démarre/arrête
+  `metro 10000` ; chaque tick -> `publish all sound_heartbeat 1` vers
+  `ch.client` + `print`. À la connexion, `sel 1` -> `t b b` -> `delay 300`
+  envoie un heartbeat immédiat (register) puis un second 300 ms plus tard
+  (deliver) pour que la page web voit Max actif dès ~0,3 s. Ce heartbeat est un
+  **header technique** : jamais affiché comme contenu, jamais persisté côté web.
 
 ## Sémantique importante (testée contre le serveur public)
 
@@ -157,6 +165,9 @@ Vérifie : JSON valide, ids uniques, `lines` vers objets existants et
 inlets/outlets dans les limites, présence du bpatcher `ch.client.maxpat`, des
 5 headers, de `print CollabHub-Web-Sender`, du `t b b`, du `send ch_pub5` +
 `delay 300` + 5 `receive ch_pub5` (double passage register/deliver, 10
-déclenchements), un bouton par header, et **l'absence** de l'ancien
-`pipe 0 50 100 150 200`. La clé de connexion est `lines` (conforme aux patches
-officiels Collab-Hub `ch.client.maxpat` / `simple.maxpat`), non `patchlines`.
+déclenchements), un bouton par header, l'absence de l'ancien
+`pipe 0 50 100 150 200`, **et (Lot 3B)** le header technique `sound_heartbeat`,
+`metro 10000`, le démarrage/arrêt du metro par `connected`, le câblage du
+publish heartbeat vers `ch.client` + `print`, et l'absence de `$1` sur le
+heartbeat. La clé de connexion est `lines` (conforme aux patches officiels
+Collab-Hub `ch.client.maxpat` / `simple.maxpat`), non `patchlines`.

@@ -70,6 +70,37 @@ export function initDiagnostic(api, root, persistence = {}) {
     });
   }
 
+  // --- Fraîcheur (Lot 3B) : rafraîchi par le timer central (main.js, 1 s) ---
+  const maxSeenEl = el(root, 'diag-max-seen');
+  const maxAgeEl = el(root, 'diag-max-age');
+  const contentUpdatedEl = el(root, 'diag-content-updated');
+  const contentAgeEl = el(root, 'diag-content-age');
+  const maxStateEl = el(root, 'diag-max-state');
+  const contentStateEl = el(root, 'diag-content-state');
+  function fmtAge(ms) {
+    if (ms === null || !Number.isFinite(ms)) return '—';
+    if (ms < 1000) return '< 1 s';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s} s`;
+    const m = Math.floor(s / 60);
+    return `${m} min ${s % 60} s`;
+  }
+  function fmtTs(ms) {
+    if (ms === null || !Number.isFinite(ms)) return 'jamais';
+    return new Date(ms).toISOString();
+  }
+  function refreshFreshness(freshness) {
+    if (!freshness) return;
+    const seen = freshness.getMaxLastSeenAt();
+    const upd = freshness.getContentLastUpdatedAt();
+    if (maxSeenEl) maxSeenEl.textContent = fmtTs(seen);
+    if (maxAgeEl) maxAgeEl.textContent = fmtAge(freshness.maxAgeMs());
+    if (contentUpdatedEl) contentUpdatedEl.textContent = fmtTs(upd);
+    if (contentAgeEl) contentAgeEl.textContent = fmtAge(freshness.contentAgeMs());
+    if (maxStateEl) maxStateEl.textContent = freshness.isMaxActive() ? 'actif' : 'silencieux';
+    if (contentStateEl) contentStateEl.textContent = freshness.isContentFresh() ? 'récent' : 'ancien';
+  }
+
   // --- Événements Collab-Hub connus (listeners uniques ; CH-ClientScript.js:546-709) ---
   ['serverMessage', 'myUsername', 'allUsers', 'otherUsers', 'availableControls',
    'observedControls', 'myControls', 'availableEvents', 'observedEvents', 'myEvents',
@@ -101,5 +132,5 @@ export function initDiagnostic(api, root, persistence = {}) {
   });
 
   recomputeObserveAll();
-  return { setStatus, logControl, setLocalSaved, setLocalRestore };
+  return { setStatus, logControl, setLocalSaved, setLocalRestore, refreshFreshness };
 }

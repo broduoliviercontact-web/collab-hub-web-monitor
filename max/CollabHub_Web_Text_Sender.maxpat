@@ -921,6 +921,149 @@
           ],
           "text": "receive ch_pub5"
         }
+      },
+      {
+        "box": {
+          "id": "obj-56",
+          "maxclass": "comment",
+          "patching_rect": [
+            20,
+            820,
+            860,
+            48
+          ],
+          "numinlets": 1,
+          "numoutlets": 0,
+          "text": "HEARTBEAT — publie sound_heartbeat toutes les 10 s tant que le CH-Client est connecté. connected 1 -> démarre le metro (toggle) + tick immédiat (sel 1 -> t b b : register puis deliver 300 ms) ; connected 0 -> arrête. Le premier heartbeat livré arrive ~0,3 s après la connexion."
+        }
+      },
+      {
+        "box": {
+          "id": "obj-57",
+          "maxclass": "toggle",
+          "patching_rect": [
+            20,
+            884,
+            24,
+            24
+          ],
+          "numinlets": 1,
+          "numoutlets": 1,
+          "outlettype": [
+            "int"
+          ],
+          "parameter_enable": 0
+        }
+      },
+      {
+        "box": {
+          "id": "obj-58",
+          "maxclass": "newobj",
+          "patching_rect": [
+            56,
+            886,
+            90,
+            22
+          ],
+          "numinlets": 2,
+          "numoutlets": 1,
+          "outlettype": [
+            "bang"
+          ],
+          "text": "metro 10000"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-59",
+          "maxclass": "newobj",
+          "patching_rect": [
+            160,
+            886,
+            60,
+            22
+          ],
+          "numinlets": 1,
+          "numoutlets": 2,
+          "outlettype": [
+            "bang",
+            "bang"
+          ],
+          "text": "sel 1"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-60",
+          "maxclass": "newobj",
+          "patching_rect": [
+            240,
+            886,
+            48,
+            22
+          ],
+          "numinlets": 1,
+          "numoutlets": 2,
+          "outlettype": [
+            "bang",
+            "bang"
+          ],
+          "text": "t b b"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-61",
+          "maxclass": "newobj",
+          "patching_rect": [
+            240,
+            918,
+            70,
+            22
+          ],
+          "numinlets": 1,
+          "numoutlets": 1,
+          "outlettype": [
+            "bang"
+          ],
+          "text": "delay 300"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-62",
+          "maxclass": "message",
+          "patching_rect": [
+            330,
+            918,
+            280,
+            22
+          ],
+          "numinlets": 2,
+          "numoutlets": 1,
+          "outlettype": [
+            ""
+          ],
+          "text": "publish all sound_heartbeat 1"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-63",
+          "maxclass": "message",
+          "patching_rect": [
+            620,
+            918,
+            150,
+            22
+          ],
+          "numinlets": 2,
+          "numoutlets": 1,
+          "outlettype": [
+            ""
+          ],
+          "text": "— dernier envoi —"
+        }
       }
     ],
     "lines": [
@@ -1454,6 +1597,138 @@
           ],
           "disabled": 0,
           "hidden": 0
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-4",
+            1
+          ],
+          "destination": [
+            "obj-57",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-4",
+            1
+          ],
+          "destination": [
+            "obj-59",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-57",
+            0
+          ],
+          "destination": [
+            "obj-58",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-58",
+            0
+          ],
+          "destination": [
+            "obj-62",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-59",
+            0
+          ],
+          "destination": [
+            "obj-60",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-60",
+            0
+          ],
+          "destination": [
+            "obj-62",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-60",
+            1
+          ],
+          "destination": [
+            "obj-61",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-61",
+            0
+          ],
+          "destination": [
+            "obj-62",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-62",
+            0
+          ],
+          "destination": [
+            "obj-3",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-62",
+            0
+          ],
+          "destination": [
+            "obj-8",
+            0
+          ]
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-62",
+            0
+          ],
+          "destination": [
+            "obj-63",
+            0
+          ]
         }
       }
     ]

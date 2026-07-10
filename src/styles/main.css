@@ -132,6 +132,12 @@ h1 {
   to { opacity: 1; }
 }
 
+/* Lot 3B : contenu ancien (data-content-fresh="false") — discret, sans redesign.
+   Pas de masquage : le contenu reste affiché, légèrement estompé. */
+main.card[data-content-fresh="false"] .block {
+  opacity: 0.7;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .just-updated { animation: none; }
   .status-dot.is-wait { animation: none; }

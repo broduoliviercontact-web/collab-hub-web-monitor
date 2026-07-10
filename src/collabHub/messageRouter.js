@@ -8,6 +8,13 @@ export const KNOWN_HEADERS = [
   'sound_link',
 ];
 
+// Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler
+// son activité. Jamais affiché comme contenu, jamais persisté.
+export const HEARTBEAT_HEADER = 'sound_heartbeat';
+
+// Tous les headers à observer au démarrage : 5 contenus + le heartbeat.
+export const OBSERVABLE_HEADERS = [...KNOWN_HEADERS, HEARTBEAT_HEADER];
+
 // Normalise data.values en chaîne.
 // - tableau -> join(' ')
 // - scalaire -> String(...)

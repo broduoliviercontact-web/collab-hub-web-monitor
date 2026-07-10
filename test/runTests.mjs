@@ -12,6 +12,10 @@ import {
   loadSoundState, saveSoundState, clearSoundState,
   STORAGE_KEY, STORAGE_VERSION,
 } from '../src/state/persist.js';
+import {
+  createFreshnessState, computePublicStatus,
+  MAX_ACTIVE_THRESHOLD_MS, CONTENT_FRESH_THRESHOLD_MS, HEARTBEAT_HEADER,
+} from '../src/state/freshness.js';
 
 // --- Faux storage (Map) pour les tests de persistance ---
 function fakeStorage() {
@@ -225,13 +229,13 @@ test('wireSocket : un listener par event, réobservation idempotente sur reconne
   for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'control']) {
     assert.equal(sock.listenerCount(e), 1, `listener unique pour ${e}`);
   }
-  sock.fire('connect');            // connexion initiale -> 5 émissions
-  assert.equal(emitted.length, 5);
+  sock.fire('connect');            // connexion initiale -> 6 émissions (5 contenus + heartbeat)
+  assert.equal(emitted.length, 6);
   sock.fire('reconnect');          // déclenche aussi connect ensuite -> déjà observé
-  assert.equal(emitted.length, 5);
+  assert.equal(emitted.length, 6);
   sock.fire('disconnect');         // vide le guard
-  sock.fire('connect');            // reconnect -> 5 nouvelles
-  assert.equal(emitted.length, 10);
+  sock.fire('connect');            // reconnect -> 6 nouvelles
+  assert.equal(emitted.length, 12);
 });
 
 // 16. forget() permet de réobserver après un unobserve explicite
@@ -405,4 +409,146 @@ test('persist : storage nul/manquant ne lève jamais', () => {
   // storage sans les méthodes attendues
   assert.equal(loadSoundState({}), null);
   assert.equal(saveSoundState({}, SNAP, fixedNow), false);
+});
+
+// --- Fraîcheur / heartbeat Max (Lot 3B) ---
+// Horloge injectable pour des tests déterministes (avance manuelle du temps).
+function makeClock(start) {
+  let t = start;
+  return { now: () => t, advance: (ms) => { t += ms; } };
+}
+
+// 1. heartbeat met à jour maxLastSeenAt (pas le contenu)
+test('freshness : heartbeat met à jour maxLastSeenAt, pas le contenu', () => {
+  const c = makeClock(1000);
+  const f = createFreshnessState({ now: c.now });
+  f.onHeartbeat();
+  assert.equal(f.getMaxLastSeenAt(), 1000);
+  assert.equal(f.getContentLastUpdatedAt(), null); // contenu non touché
+});
+
+// 2. heartbeat ne modifie aucun champ de contenu
+test('freshness : heartbeat n altère pas contentLastUpdatedAt', () => {
+  const c = makeClock(5000);
+  const f = createFreshnessState({ now: c.now });
+  f.onContentUpdate(); // contenu daté
+  assert.equal(f.getContentLastUpdatedAt(), 5000);
+  f.onHeartbeat();     // heartbeat arrive
+  assert.equal(f.getContentLastUpdatedAt(), 5000); // contenu inchangé
+  assert.equal(f.getMaxLastSeenAt(), 5000);
+});
+
+// 3. heartbeat n est pas persisté (loadSoundState ne contient jamais sound_heartbeat)
+test('freshness : sound_heartbeat absent de l état persisté', () => {
+  const st = fakeStorage();
+  // On simule une sauvegarde après réception d un heartbeat + contenu.
+  const state = createSoundState(DEFAULTS);
+  state.set('sound_title', 'Titre');
+  // Le heartbeat n entre jamais dans state (header technique) -> snapshot ne le contient pas.
+  const snap = state.snapshot();
+  assert.equal(snap.sound_heartbeat, undefined);
+  assert.equal(snap.sound_title, 'Titre');
+  saveSoundState(st, snap, fixedNow);
+  const r = loadSoundState(st);
+  assert.equal(r.fields.sound_heartbeat, undefined);
+  assert.equal(r.fields.sound_title, 'Titre');
+});
+
+// 4. Max actif sous le seuil
+test('freshness : Max actif si heartbeat < MAX_ACTIVE_THRESHOLD_MS', () => {
+  const c = makeClock(0);
+  const f = createFreshnessState({ now: c.now });
+  assert.equal(f.isMaxActive(), false); // jamais de heartbeat
+  f.onHeartbeat();
+  c.advance(MAX_ACTIVE_THRESHOLD_MS - 1);
+  assert.equal(f.isMaxActive(), true);
+});
+
+// 5. Max silencieux au-dessus du seuil
+test('freshness : Max silencieux si heartbeat > MAX_ACTIVE_THRESHOLD_MS', () => {
+  const c = makeClock(0);
+  const f = createFreshnessState({ now: c.now });
+  f.onHeartbeat();
+  c.advance(MAX_ACTIVE_THRESHOLD_MS + 1);
+  assert.equal(f.isMaxActive(), false);
+});
+
+// 6. contenu récent sous le seuil
+test('freshness : contenu récent si màj < CONTENT_FRESH_THRESHOLD_MS', () => {
+  const c = makeClock(0);
+  const f = createFreshnessState({ now: c.now });
+  f.onContentUpdate();
+  c.advance(CONTENT_FRESH_THRESHOLD_MS - 1);
+  assert.equal(f.isContentFresh(), true);
+});
+
+// 7. contenu ancien au-dessus du seuil
+test('freshness : contenu ancien si màj > CONTENT_FRESH_THRESHOLD_MS', () => {
+  const c = makeClock(0);
+  const f = createFreshnessState({ now: c.now });
+  f.onContentUpdate();
+  c.advance(CONTENT_FRESH_THRESHOLD_MS + 1);
+  assert.equal(f.isContentFresh(), false);
+});
+
+// 8. contenu restauré ancien correctement détecté
+test('freshness : contenu restauré ancien détecté via restoreContent', () => {
+  const c = makeClock(10_000_000); // now lointain
+  const f = createFreshnessState({ now: c.now });
+  f.restoreContent(c.now() - (CONTENT_FRESH_THRESHOLD_MS + 5000)); // restauré vieux
+  assert.equal(f.isContentFresh(), false);
+  f.restoreContent(c.now() - 1000); // restauré récent
+  assert.equal(f.isContentFresh(), true);
+});
+
+// 9. server disconnect prioritaire sur Max actif
+test('freshness : computePublicStatus priorise le serveur sur Max actif', () => {
+  const f = createFreshnessState();
+  f.setServerStatus('connected');
+  f.onHeartbeat();
+  assert.equal(computePublicStatus('connected', true), 'max_active');
+  assert.equal(computePublicStatus('connected', false), 'max_silent');
+  // serveur down : on ne montre jamais max_active/silent
+  assert.equal(computePublicStatus('disconnected', true), 'disconnected');
+  assert.equal(computePublicStatus('error', true), 'disconnected');
+  assert.equal(computePublicStatus('reconnecting', true), 'reconnecting');
+});
+
+// 10. aucun listener/timer dupliqué : wireSocket attache un listener unique
+test('freshness : un seul listener par event (pas de doublon wireSocket)', () => {
+  const sock = fakeSocket();
+  const guard = createObserveGuard({ emit: () => {} });
+  wireSocket(sock, guard, { onStatus: () => {}, onControl: () => {} });
+  for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'control']) {
+    assert.equal(sock.listenerCount(e), 1, `listener unique pour ${e}`);
+  }
+});
+
+// 11. setServerStatus reflète la connexion
+test('freshness : setServerStatus reflète connecté/déconnecté', () => {
+  const f = createFreshnessState();
+  assert.equal(f.isServerConnected(), false);
+  f.setServerStatus('connected');
+  assert.equal(f.isServerConnected(), true);
+  f.setServerStatus('disconnected');
+  assert.equal(f.isServerConnected(), false);
+  f.setServerStatus('error');
+  assert.equal(f.isServerConnected(), false);
+});
+
+// 12. âges retournent null quand jamais reçu
+test('freshness : ages null tant qu aucun heartbeat/màj', () => {
+  const f = createFreshnessState();
+  assert.equal(f.maxAgeMs(), null);
+  assert.equal(f.contentAgeMs(), null);
+  f.onHeartbeat();
+  assert.ok(f.maxAgeMs() >= 0);
+  assert.equal(f.contentAgeMs(), null);
+});
+
+// 13. header technique sound_heartbeat défini
+test('freshness : HEARTBEAT_HEADER = sound_heartbeat', () => {
+  assert.equal(HEARTBEAT_HEADER, 'sound_heartbeat');
+  assert.equal(MAX_ACTIVE_THRESHOLD_MS, 25000);
+  assert.equal(CONTENT_FRESH_THRESHOLD_MS, 300000);
 });

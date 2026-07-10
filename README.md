@@ -23,10 +23,11 @@ src/
 ├── collabHub/
 │   ├── socketClient.js          # connexion Socket.IO, fallback auth, API observation
 │   ├── observeGuard.js          # observation idempotente par socket.id (pur, testable)
-│   └── messageRouter.js         # normalisation + routage des headers (pur, testable)
+│   └── messageRouter.js         # normalisation + routage, KNOWN/HEARTBEAT headers (pur)
 ├── state/
 │   ├── soundState.js            # état courant des 5 champs (pur, testable)
-│   └── persist.js               # persistance locale localStorage (Lot 3A, pur, testable)
+│   ├── persist.js               # persistance locale localStorage (Lot 3A, pur, testable)
+│   └── freshness.js             # état technique fraîcheur + heartbeat (Lot 3B, pur)
 ├── ui/
 │   ├── renderSoundInfo.js       # rendu DOM + sécurité du lien (pur, testable)
 │   └── renderConnectionStatus.js# indicateur de connexion
@@ -108,8 +109,41 @@ npm run dev                # http://localhost:5173 (ou port suivant)
    nouvelles valeurs arrivent après reconnexion.
 9. Tester le rendu mobile via les DevTools.
 10. Ouvrir le mode diagnostic : `http://localhost:5173/?debug=1`.
+11. Heartbeat Max : une fois le CH-Client connecté, le patch publie
+    `sound_heartbeat` toutes les 10 s -> le statut passe à **« Connecté — Max
+    actif »** (sous 25 s). Sans heartbeat pendant > 25 s -> **« Connecté — Max
+    silencieux »**. Voir « Heartbeat & fraîcheur » ci-dessous.
 
 Procédure détaillée et dépannage Max : `max/README.md`.
+
+## Heartbeat Max & fraîcheur du contenu (Lot 3B)
+
+La page distingue trois choses : la **connexion au serveur** Collab-Hub, la
+**activité réelle du patch Max** (heartbeat), et l'**ancienneté du contenu**
+affiché.
+
+- **Heartbeat Max** : le patch publie `publish all sound_heartbeat 1` toutes
+  les 10 s, uniquement tant que le CH-Client est connecté (zone `HEARTBEAT` du
+  patch, `metro 10000` piloté par `connected`). C'est un **header technique** :
+  jamais affiché comme contenu, jamais persisté, ne déclenche pas l'animation
+  des blocs.
+- **Statut public** (réutilise l'indicateur existant, libellés courts) :
+  - `Connecté — Max actif` : serveur connecté ET heartbeat reçu depuis < 25 s.
+  - `Connecté — Max silencieux` : serveur connecté mais heartbeat > 25 s
+    (ou jamais reçu).
+  - `Reconnexion…` / `Déconnecté` : le statut serveur est prioritaire.
+- **Seuils** (`src/state/freshness.js`, testables) :
+  `MAX_ACTIVE_THRESHOLD_MS = 25000`, `CONTENT_FRESH_THRESHOLD_MS = 300000`
+  (5 min). Aucun timestamp détaillé affiché au public.
+- **Contenu ancien** : l'attribut `data-content-fresh="true|false"` est posé sur
+  la carte (`main.card`) ; le contenu ancien est très légèrement estompé
+  (opacity), **jamais masqué**. Aucune animation continue agressive.
+- **Après rechargement** : le contenu est restauré depuis `localStorage` et daté
+  (donc potentiellement « ancien ») ; `maxLastSeenAt` **n'est pas restauré** ->
+  Max reste « silencieux » jusqu'au premier heartbeat reçu.
+
+Logique dans `src/state/freshness.js` (pur, horloge injectable, testable en
+Node). Détails : `docs/bmad/06-heartbeat-and-freshness.md`.
 
 ## Mode diagnostic
 
@@ -223,7 +257,7 @@ Procédure détaillée et dépannage Max : `max/README.md`. Validation complète
 ## Tests
 
 ```bash
-npm test          # node --test test/runTests.mjs  (35 tests, zéro dépendance)
+npm test          # node --test test/runTests.mjs  (48 tests, zéro dépendance)
 ```
 
 Couvrent : normalisation (tableau 1 ou n éléments, scalaire, absent), routage
@@ -232,10 +266,14 @@ javascript/data/vide refusé), rendu du bon élément, isolation des champs,
 état, **observation idempotente** (un header émis une fois par socket.id,
 reset au disconnect, réobservation unique à la reconnexion, un listener par
 événement, `forget` après unobserve), **mode d'auth** (anonymous/guest/
-inconnu, `/hub` conservé), et **persistance locale** (restauration, corruption,
+inconnu, `/hub` conservé), **persistance locale** (restauration, corruption,
 version inconnue, header inconnu, type non string, `sound_link` invalidé masqué,
-sauvegarde après contrôle, timestamp, effacement, storage absent). Voir
-`docs/bmad/03-lot-1-validation.md` et `docs/bmad/05-local-persistence.md`.
+sauvegarde après contrôle, timestamp, effacement, storage absent), et
+**fraîcheur/heartbeat** (heartbeat met à jour maxLastSeenAt sans toucher au
+contenu ni persister, seuils Max actif/silencieux et contenu récent/ancien,
+contenu restauré ancien, serveur prioritaire, horloge injectable). Voir
+`docs/bmad/03-lot-1-validation.md`, `docs/bmad/05-local-persistence.md` et
+`docs/bmad/06-heartbeat-and-freshness.md`.
 
 ## Limites connues
 
@@ -248,6 +286,11 @@ sauvegarde après contrôle, timestamp, effacement, storage absent). Voir
   multi-postes (chaque navigateur a son propre état). Données validées
   strictement à la lecture ; données corrompues/incompatibles -> valeurs par
   défaut. Voir `docs/bmad/05-local-persistence.md`.
+- **Fraîcheur** (Lot 3B) : `maxLastSeenAt` n'est pas restauré après rechargement
+  -> Max apparaît « silencieux » jusqu'au 1er heartbeat reçu (≤ 10 s après la
+  connexion Max). « Max actif » n'apparaît qu'après réception d'un heartbeat
+  livré (register/deliver : ~0,3 s après la connexion Max dans le patch). Se
+  reporter à `docs/bmad/06-heartbeat-and-freshness.md`.
 - Le serveur public v0.3.4 est vieillissant ; un changement d'URL/protocole
   imposerait d'ajuster `.env`.
 - L'auth invitée `/api/v1/auth/guest` est absente du serveur public v0.3.4

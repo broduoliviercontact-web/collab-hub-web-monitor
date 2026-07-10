@@ -2,11 +2,12 @@
 // Mode diagnostic via ?debug=1 (chargé dynamiquement, hors chemin public).
 import './styles/main.css';
 import { connectCollabHub } from './collabHub/socketClient.js';
-import { routeControl, KNOWN_HEADERS } from './collabHub/messageRouter.js';
+import { routeControl, KNOWN_HEADERS, HEARTBEAT_HEADER } from './collabHub/messageRouter.js';
 import { createSoundState, DEFAULTS } from './state/soundState.js';
 import { renderField, flashElement, fieldElementKey } from './ui/renderSoundInfo.js';
 import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
 import { loadSoundState, saveSoundState, clearSoundState } from './state/persist.js';
+import { createFreshnessState, computePublicStatus } from './state/freshness.js';
 
 // --- Configuration (centralisée via env) ---
 const SERVER_URL = (import.meta.env.VITE_COLLAB_HUB_URL || 'https://server.collab-hub.io').replace(/\/+$/, '');
@@ -16,6 +17,7 @@ const USERNAME = `CH-Web_${Math.floor(Math.random() * 1000)}`;
 
 // --- Refs DOM ---
 const els = {
+  card: document.querySelector('main.card'),
   title: document.getElementById('sound-title'),
   author: document.getElementById('sound-author'),
   subtitle: document.getElementById('sound-subtitle'),
@@ -37,27 +39,76 @@ for (const h of KNOWN_HEADERS) renderField(h, state.get(h), els);
 let lastSavedAt = restored ? restored.updatedAt : null; // timestamp du dernier état sauvegardé
 let lastLocalRestore = restored ? restored.updatedAt : null;
 
+// --- État technique de fraîcheur (Lot 3B) ---
+// Horloge réelle en prod. Le contenu restauré est daté depuis localStorage ;
+// maxLastSeenAt n'est JAMAIS restauré (un heartbeat ancien serait trompeur).
+const freshness = createFreshnessState();
+if (restored && restored.updatedAt) {
+  const ms = new Date(restored.updatedAt).getTime();
+  if (Number.isFinite(ms)) freshness.restoreContent(ms);
+}
+
+let connStatus = null;       // statut serveur courant (null avant le 1er signal)
+let lastPublicStatus = null; // évite les écritures DOM redondantes
+let lastFresh = null;
+
 let diagApi = null; // panneau ?debug=1 (absent en mode public)
 
-// --- Routage d'un événement control -> état + rendu + persistance locale ---
-function handleControl(data) {
-  routeControl(data, (header, value) => {
-    state.set(header, value);
-    renderField(header, value, els);
-    const key = fieldElementKey(header);
-    if (key) flashElement(els[key]);
-  });
-  // Persiste l'état courant (5 headers connus) + timestamp. Silencieux si échec.
-  const saved = saveSoundState(localStorage, state.snapshot());
-  if (saved) {
-    lastSavedAt = saved.updatedAt;
-    if (diagApi) diagApi.setLocalSaved(saved.updatedAt);
+// Recalcule l'UI publique : libellé de statut (Max actif/silencieux) + attribut
+// data-content-fresh. Écritures DOM gardées (uniquement si changement).
+function recomputePublicState() {
+  if (connStatus !== null) {
+    const pub = computePublicStatus(connStatus, freshness.isMaxActive());
+    if (pub !== lastPublicStatus) {
+      renderConnectionStatus(pub, els);
+      lastPublicStatus = pub;
+    }
   }
-  if (diagApi) diagApi.logControl(data);
+  const fresh = freshness.isContentFresh();
+  if (fresh !== lastFresh) {
+    if (els.card) els.card.setAttribute('data-content-fresh', String(fresh));
+    lastFresh = fresh;
+  }
+}
+
+// Timer central UNIQUE (Lot 3B) : 1 s, léger. Rafraîchit l'UI publique
+// (transitions actif/silencieux, récent/ancien aux seuils) + le diagnostic.
+// Évite les multiples setInterval : un seul, maîtrisé.
+setInterval(() => {
+  recomputePublicState();
+  if (diagApi) diagApi.refreshFreshness(freshness);
+}, 1000);
+
+// --- Routage d'un événement control ---
+function handleControl(data) {
+  if (data && data.header === HEARTBEAT_HEADER) {
+    // Heartbeat : on date l'activité Max, SANS toucher au contenu ni persister.
+    freshness.onHeartbeat();
+  } else {
+    const routed = routeControl(data, (header, value) => {
+      state.set(header, value);
+      renderField(header, value, els);
+      const key = fieldElementKey(header);
+      if (key) flashElement(els[key]);
+    });
+    if (routed) {
+      freshness.onContentUpdate();
+      // Persiste l'état contenu (5 headers connus) + timestamp. Silencieux si échec.
+      const saved = saveSoundState(localStorage, state.snapshot());
+      if (saved) {
+        lastSavedAt = saved.updatedAt;
+        if (diagApi) diagApi.setLocalSaved(saved.updatedAt);
+      }
+    }
+  }
+  recomputePublicState();
+  if (diagApi) { diagApi.logControl(data); diagApi.refreshFreshness(freshness); }
 }
 
 function handleStatus(status) {
-  renderConnectionStatus(status, els);
+  connStatus = status;
+  freshness.setServerStatus(status);
+  recomputePublicState();
   if (diagApi) diagApi.setStatus(status);
 }
 
@@ -72,7 +123,11 @@ connectCollabHub({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNA
           initialSaved: lastSavedAt,
           clear: () => { const ok = clearSoundState(localStorage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
         });
+        diagApi.refreshFreshness(freshness);
       });
     }
   })
   .catch((err) => console.error('[Collab-Hub] connexion impossible :', err));
+
+// Première passe de fraîcheur (le contenu restauré peut déjà être ancien).
+recomputePublicState();

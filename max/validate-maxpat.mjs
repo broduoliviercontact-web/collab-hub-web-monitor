@@ -112,5 +112,41 @@ for (const h of REQUIRED_HEADERS) {
 const indButtons = boxes.filter(b => b.maxclass === 'button');
 indButtons.length >= 1 ? pass(`${indButtons.length} bouton(s) (global + individuels)`) : fail('aucun bouton');
 
+// 9. HEARTBEAT (Lot 3B) : sound_heartbeat, metro 10000, start/stop sur connected
+const HB = 'sound_heartbeat';
+const hbPub = boxes.find(b => b.maxclass === 'message' && new RegExp(`^publish all ${HB}\\s+1$`).test((b.text || '').trim()));
+hbPub ? pass('header technique sound_heartbeat (publish all sound_heartbeat 1)') : fail('publish all sound_heartbeat 1 manquant');
+const metro = boxes.find(b => b.maxclass === 'newobj' && /^metro\s+10000$/.test((b.text || '').trim()));
+metro ? pass('metro 10000 présent') : fail('metro 10000 manquant (fréquence heartbeat 10 s)');
+// connected vient de "route serverMessage connected" (outlet 1) -> un newobj route ... connected
+const routeConn = boxes.find(b => b.maxclass === 'newobj' && /^route\s+serverMessage\s+connected$/.test((b.text || '').trim()));
+routeConn ? pass('route serverMessage connected présent (signal connected)') : fail('route serverMessage connected manquant');
+// démarrage/arrêt : connected (route outlet 1) doit piloter le metro via un toggle (ou directement)
+if (routeConn && metro) {
+  const connDests = lines.filter(l => l.patchline.source[0] === routeConn.id && l.patchline.source[1] === 1).map(l => l.patchline.destination[0]);
+  const drivesMetro = connDests.some(id => {
+    const t = byId[id];
+    if (!t) return false;
+    if (t.maxclass === 'toggle') {
+      // toggle -> metro ?
+      return lines.some(l => l.patchline.source[0] === id && l.patchline.destination[0] === metro.id);
+    }
+    return id === metro.id; // branché directement
+  });
+  drivesMetro ? pass('connected (route out1) pilote le metro (via toggle ou direct)') : fail('connected ne démarre/arrête pas le metro');
+}
+// le publish heartbeat va vers ch.client + print (comme les contenus)
+if (hbPub) {
+  const outs = lines.filter(l => l.patchline.source[0] === hbPub.id).map(l => l.patchline.destination[0]);
+  const toClient = outs.some(id => byId[id] && byId[id].maxclass === 'bpatcher' && /ch\.client/i.test(byId[id].name || ''));
+  const toPrint = outs.some(id => byId[id] && /print\s+CollabHub-Web-Sender/.test(byId[id].text || ''));
+  if (!toClient) fail('sound_heartbeat publish non câblé vers ch.client');
+  if (!toPrint) fail('sound_heartbeat publish non câblé vers print CollabHub-Web-Sender');
+  if (toClient && toPrint) pass('sound_heartbeat publish -> ch.client + print');
+}
+// sound_heartbeat ne doit PAS apparaître parmi les publish de contenu ($1)
+const hbAsContent = boxes.find(b => b.maxclass === 'message' && /publish all sound_heartbeat \$1/.test(b.text || ''));
+hbAsContent ? fail('sound_heartbeat ne doit pas utiliser $1 (valeur constante 1)') : pass('sound_heartbeat publié en valeur constante (pas $1)');
+
 console.log(ok ? '\nVALIDATION OK ✅' : '\nVALIDATION ÉCHEC ❌');
 process.exit(ok ? 0 : 1);

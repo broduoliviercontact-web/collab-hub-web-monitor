@@ -54,6 +54,11 @@ migration risquée.
    lien masqué).
 4. La page affiche immédiatement le dernier contenu, puis les publications en
    temps réel le mettent à jour.
+5. Le `updatedAt` restauré sert aussi à dater le contenu côté fraîcheur (Lot 3B)
+   via `freshness.restoreContent(ms)` : un contenu restauré ancien (> 5 min)
+   est marqué `data-content-fresh="false"`. **`maxLastSeenAt` n'est pas
+   restauré** (un heartbeat ancien serait trompeur) -> Max reste « silencieux »
+   jusqu'au prochain heartbeat reçu. Voir `docs/bmad/06-heartbeat-and-freshness.md`.
 
 ## Logique de validation (`loadSoundState`)
 

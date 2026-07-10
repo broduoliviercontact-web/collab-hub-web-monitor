@@ -4,7 +4,7 @@
 // Règle : un header n'est émis (observeControl) qu'une seule fois par
 // connexion (socket.id). Le suivi est vidé lors d'un vrai disconnect ;
 // après un nouveau connect, on réobserve exactement une fois les headers.
-import { KNOWN_HEADERS } from './messageRouter.js';
+import { KNOWN_HEADERS, OBSERVABLE_HEADERS } from './messageRouter.js';
 
 export function createObserveGuard({ emit }) {
   const observed = new Set();
@@ -39,7 +39,8 @@ export function wireSocket(socket, guard, { onStatus, onControl }) {
   // diagnostic (notifié via onStatus) voie déjà les 5 headers observés.
   const onConnect = () => {
     guard.setConnected(true);
-    guard.observeKnownHeadersOnce(KNOWN_HEADERS);
+    // Observe les 5 contenus + le heartbeat (Lot 3B).
+    guard.observeKnownHeadersOnce(OBSERVABLE_HEADERS);
     onStatus('connected');
   };
   socket.on('connect', onConnect);
