@@ -625,7 +625,7 @@ test('check-license : constantes stables', () => {
   assert.deepEqual(LICENSE_MARKERS, ['GNU GENERAL PUBLIC LICENSE', 'Version 3, 29 June 2007', 'END OF TERMS AND CONDITIONS']);
   assert.equal(REQUIRED.license, 'GPL-3.0-only');
   assert.equal(REQUIRED.name, 'collab-hub-web-monitor');
-  assert.equal(REQUIRED.version, '1.0.1');
+  assert.equal(REQUIRED.version, '1.1.0');
 });
 
 // ============================================================

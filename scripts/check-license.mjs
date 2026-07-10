@@ -14,7 +14,7 @@ export const LICENSE_MARKERS = [
 
 export const REQUIRED = {
   name: 'collab-hub-web-monitor',
-  version: '1.0.1',
+  version: '1.1.0',
   license: 'GPL-3.0-only',
 };
 
