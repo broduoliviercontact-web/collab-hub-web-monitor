@@ -11,11 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
+    name: Test · license · validate-maxpat · build
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -23,7 +24,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 24
+      - name: Set up Node.js 24 (npm cache)
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -32,8 +33,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check tracked files
+      - name: Check tracked files (no sensitive file tracked)
         run: node scripts/check-tracked-files.mjs
+
+      - name: Check license metadata (GPL-3.0-only)
+        run: node scripts/check-license.mjs
 
       - name: Run tests
         run: npm test
@@ -47,9 +51,10 @@ jobs:
       - name: Verify build output
         shell: bash
         run: |
-          test -f dist/index.html
-          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
-          find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
+          test -f dist/index.html || { echo "Missing dist/index.html"; exit 1; }
+          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q . || { echo "No JavaScript asset found"; exit 1; }
+          find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q . || { echo "No CSS asset found"; exit 1; }
+          echo "dist/index.html + assets JS + CSS présents"
 
       - name: Upload production build artifact
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
