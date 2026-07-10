@@ -48,11 +48,23 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   commentaire (header), une **boîte message** de saisie (valeur entre
   guillemets), un bouton **Envoyer**, la commande formatée
   `publish all <header> $1`, et un moniteur « dernier envoi ».
-- **Zone 3 — ENVOYER LES 5 CHAMPS** : un bouton global qui, via `t b b` + deux
-  `pipe 0 50 100 150 200` (le second retardé de 250 ms par `pipe 250`), envoie
-  chaque champ deux fois : 1er passage = **enregistrement** à 0/50/100/150/200 ms,
-  2e passage = **livraison** à 250/300/350/400/450 ms. C'est le 2e passage qui
-  déclenche les événements `control` reçus par la page web (voir Sémantique).
+- **Zone 3 — ENVOYER LES 5 CHAMPS** : un bouton global qui, via `t b b`, envoie
+  chaque champ **deux fois**. Le trigger `t b b` a deux sorties : la sortie 0
+  déclenche le **1er passage (enregistrement)** immédiatement ; la sortie 1 part
+  dans un `delay 300` qui déclenche le **2e passage (livraison)** 300 ms plus
+  tard. Chaque passage émet un bang dans le send/rceive nommé `ch_pub5`, qui
+  est reçu par 5 `receive ch_pub5` (un par header) → chaque receive pousse la
+  valeur courante de sa boîte dans la commande `publish all <header> $1`.
+  C'est le **2e passage** qui déclenche les événements `control` reçus par la
+  page web (voir Sémantique). On évite les longs câbles via le couple
+  `send ch_pub5` / `receive ch_pub5`.
+
+  > **Ancien mécanisme retiré (Lot 2C)** : la version précédente utilisait
+  > `pipe 0 50 100 150 200`, qui crée **un inlet par argument** (5 inlets, 5
+  > outlets). Seul l'inlet 0 étant câblé, seul l'outlet 0 tirait → un seul
+  > header publié par passage (2 au lieu de 10). Le send/receive + `delay 300`
+  > garantit que les **5** headers partent à **chaque** passage, dans un ordre
+  > déterministe, sans envoi parasite.
 - **Zone 4 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
@@ -143,6 +155,8 @@ node max/validate-maxpat.mjs
 
 Vérifie : JSON valide, ids uniques, `lines` vers objets existants et
 inlets/outlets dans les limites, présence du bpatcher `ch.client.maxpat`, des
-5 headers, de `print CollabHub-Web-Sender`, et de la chaîne `t b b` + `pipe`.
-La clé de connexion est `lines` (conforme aux patches officiels Collab-Hub
-`ch.client.maxpat` / `simple.maxpat`), non `patchlines`.
+5 headers, de `print CollabHub-Web-Sender`, du `t b b`, du `send ch_pub5` +
+`delay 300` + 5 `receive ch_pub5` (double passage register/deliver, 10
+déclenchements), un bouton par header, et **l'absence** de l'ancien
+`pipe 0 50 100 150 200`. La clé de connexion est `lines` (conforme aux patches
+officiels Collab-Hub `ch.client.maxpat` / `simple.maxpat`), non `patchlines`.

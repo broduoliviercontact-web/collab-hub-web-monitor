@@ -4,36 +4,15 @@
 import { io } from 'socket.io-client';
 import { KNOWN_HEADERS } from './messageRouter.js';
 import { createObserveGuard, wireSocket } from './observeGuard.js';
+import { resolveAuthMode, resolveAuth, buildSocketUrl } from './authMode.js';
 
-const trimSlash = (s) => (s || '').replace(/\/+$/, '');
-const stripSlash = (s) => (s || '').replace(/^\/+|\/+$/g, '');
+export async function connectCollabHub({ serverUrl, namespace, username, authMode, onControl, onStatus }) {
+  const mode = resolveAuthMode(authMode);
+  const base = buildSocketUrl(serverUrl, namespace);
 
-// Tente l'auth invitée ; en cas d'échec/404, renvoie {} (connexion anonyme).
-// Comportement hérité du spike (CH-ClientScript.js:133-152) : sur un serveur
-// sans /api/v1/auth/guest (ex. public v0.3.4), on retombe sur le socket anonyme.
-async function resolveAuth(serverUrl, username) {
-  try {
-    const res = await fetch(`${trimSlash(serverUrl)}/api/v1/auth/guest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.accessToken) return { token: data.accessToken };
-    }
-  } catch {
-    /* réseau/CORS bloqué -> fallback anonyme */
-  }
-  return {};
-}
-
-export async function connectCollabHub({ serverUrl, namespace, username, onControl, onStatus }) {
-  const base = stripSlash(namespace)
-    ? `${trimSlash(serverUrl)}/${stripSlash(namespace)}`
-    : trimSlash(serverUrl);
-
-  const auth = await resolveAuth(serverUrl, username);
+  // anonymous : aucune requête /api/v1/auth/guest (mode public v0.3.4).
+  // guest : tente le token, retombe sur l'anonyme en cas d'échec.
+  const auth = await resolveAuth({ serverUrl, username, authMode: mode });
 
   const socket = io(base, {
     auth,

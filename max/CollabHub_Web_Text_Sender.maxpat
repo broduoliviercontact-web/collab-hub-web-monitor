@@ -713,7 +713,7 @@
             820,
             34
           ],
-          "text": "ENVOYER LES 5 CHAMPS — 1er passage (enregistrement) à 0/50/100/150/200 ms, 2e passage (livraison) à 250/300/350/400/450 ms. Le 2e passage déclenche les événements control reçus par la page web."
+          "text": "ENVOYER LES 5 CHAMPS — 1er passage (enregistrement) immédiat, 2e passage (livraison) 300 ms plus tard. Chaque passage déclenche les 5 publish via send/receive ch_pub5 (ordre déterministe). Le 2e passage déclenche les événements control reçus par la page web. 10 messages imprimés dans la console Max."
         }
       },
       {
@@ -770,68 +770,6 @@
       },
       {
         "box": {
-          "id": "obj-44",
-          "maxclass": "newobj",
-          "numinlets": 1,
-          "numoutlets": 5,
-          "outlettype": [
-            "bang",
-            "bang",
-            "bang",
-            "bang",
-            "bang"
-          ],
-          "patching_rect": [
-            320,
-            680,
-            150,
-            22
-          ],
-          "text": "pipe 0 50 100 150 200"
-        }
-      },
-      {
-        "box": {
-          "id": "obj-45",
-          "maxclass": "newobj",
-          "numinlets": 1,
-          "numoutlets": 1,
-          "outlettype": [
-            "bang"
-          ],
-          "patching_rect": [
-            250,
-            712,
-            60,
-            22
-          ],
-          "text": "pipe 250"
-        }
-      },
-      {
-        "box": {
-          "id": "obj-46",
-          "maxclass": "newobj",
-          "numinlets": 1,
-          "numoutlets": 5,
-          "outlettype": [
-            "bang",
-            "bang",
-            "bang",
-            "bang",
-            "bang"
-          ],
-          "patching_rect": [
-            320,
-            712,
-            150,
-            22
-          ],
-          "text": "pipe 0 50 100 150 200"
-        }
-      },
-      {
-        "box": {
           "id": "obj-47",
           "maxclass": "comment",
           "numinlets": 1,
@@ -858,6 +796,130 @@
             20
           ],
           "text": "→ voir la console Max (objet print CollabHub-Web-Sender ci-dessus à droite)"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-49",
+          "maxclass": "newobj",
+          "numinlets": 1,
+          "numoutlets": 0,
+          "outlettype": [],
+          "patching_rect": [
+            320,
+            680,
+            90,
+            22
+          ],
+          "text": "send ch_pub5"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-50",
+          "maxclass": "newobj",
+          "numinlets": 1,
+          "numoutlets": 1,
+          "outlettype": [
+            "bang"
+          ],
+          "patching_rect": [
+            250,
+            712,
+            70,
+            22
+          ],
+          "text": "delay 300"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-51",
+          "maxclass": "newobj",
+          "numinlets": 0,
+          "numoutlets": 1,
+          "outlettype": [
+            ""
+          ],
+          "patching_rect": [
+            80,
+            300,
+            120,
+            22
+          ],
+          "text": "receive ch_pub5"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-52",
+          "maxclass": "newobj",
+          "numinlets": 0,
+          "numoutlets": 1,
+          "outlettype": [
+            ""
+          ],
+          "patching_rect": [
+            80,
+            364,
+            120,
+            22
+          ],
+          "text": "receive ch_pub5"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-53",
+          "maxclass": "newobj",
+          "numinlets": 0,
+          "numoutlets": 1,
+          "outlettype": [
+            ""
+          ],
+          "patching_rect": [
+            80,
+            428,
+            120,
+            22
+          ],
+          "text": "receive ch_pub5"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-54",
+          "maxclass": "newobj",
+          "numinlets": 0,
+          "numoutlets": 1,
+          "outlettype": [
+            ""
+          ],
+          "patching_rect": [
+            80,
+            492,
+            120,
+            22
+          ],
+          "text": "receive ch_pub5"
+        }
+      },
+      {
+        "box": {
+          "id": "obj-55",
+          "maxclass": "newobj",
+          "numinlets": 0,
+          "numoutlets": 1,
+          "outlettype": [
+            ""
+          ],
+          "patching_rect": [
+            80,
+            556,
+            120,
+            22
+          ],
+          "text": "receive ch_pub5"
         }
       }
     ],
@@ -1284,184 +1346,114 @@
       },
       {
         "patchline": {
-          "destination": [
-            "obj-44",
-            0
-          ],
-          "disabled": 0,
-          "hidden": 0,
           "source": [
             "obj-43",
             0
-          ]
+          ],
+          "destination": [
+            "obj-49",
+            0
+          ],
+          "disabled": 0,
+          "hidden": 0
         }
       },
       {
         "patchline": {
-          "destination": [
-            "obj-45",
-            0
-          ],
-          "disabled": 0,
-          "hidden": 0,
           "source": [
             "obj-43",
             1
-          ]
-        }
-      },
-      {
-        "patchline": {
+          ],
           "destination": [
-            "obj-46",
+            "obj-50",
             0
           ],
           "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-45",
-            0
-          ]
+          "hidden": 0
         }
       },
       {
         "patchline": {
+          "source": [
+            "obj-50",
+            0
+          ],
+          "destination": [
+            "obj-49",
+            0
+          ],
+          "disabled": 0,
+          "hidden": 0
+        }
+      },
+      {
+        "patchline": {
+          "source": [
+            "obj-51",
+            0
+          ],
           "destination": [
             "obj-11",
             0
           ],
           "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-44",
-            0
-          ]
+          "hidden": 0
         }
       },
       {
         "patchline": {
-          "destination": [
-            "obj-11",
+          "source": [
+            "obj-52",
             0
           ],
-          "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-46",
-            0
-          ]
-        }
-      },
-      {
-        "patchline": {
           "destination": [
             "obj-17",
             0
           ],
           "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-44",
-            1
-          ]
+          "hidden": 0
         }
       },
       {
         "patchline": {
-          "destination": [
-            "obj-17",
+          "source": [
+            "obj-53",
             0
           ],
-          "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-46",
-            1
-          ]
-        }
-      },
-      {
-        "patchline": {
           "destination": [
             "obj-23",
             0
           ],
           "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-44",
-            2
-          ]
+          "hidden": 0
         }
       },
       {
         "patchline": {
-          "destination": [
-            "obj-23",
+          "source": [
+            "obj-54",
             0
           ],
-          "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-46",
-            2
-          ]
-        }
-      },
-      {
-        "patchline": {
           "destination": [
             "obj-29",
             0
           ],
           "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-44",
-            3
-          ]
+          "hidden": 0
         }
       },
       {
         "patchline": {
-          "destination": [
-            "obj-29",
+          "source": [
+            "obj-55",
             0
           ],
-          "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-46",
-            3
-          ]
-        }
-      },
-      {
-        "patchline": {
           "destination": [
             "obj-35",
             0
           ],
           "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-44",
-            4
-          ]
-        }
-      },
-      {
-        "patchline": {
-          "destination": [
-            "obj-35",
-            0
-          ],
-          "disabled": 0,
-          "hidden": 0,
-          "source": [
-            "obj-46",
-            4
-          ]
+          "hidden": 0
         }
       }
     ]

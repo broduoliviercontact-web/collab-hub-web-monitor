@@ -10,6 +10,7 @@ import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
 // --- Configuration (centralisée via env) ---
 const SERVER_URL = (import.meta.env.VITE_COLLAB_HUB_URL || 'https://server.collab-hub.io').replace(/\/+$/, '');
 const NAMESPACE = (import.meta.env.VITE_COLLAB_HUB_NAMESPACE ?? '').replace(/^\/+|\/+$/g, '');
+const AUTH_MODE = import.meta.env.VITE_COLLAB_HUB_AUTH_MODE;
 const USERNAME = `CH-Web_${Math.floor(Math.random() * 1000)}`;
 
 // --- Refs DOM ---
@@ -45,7 +46,7 @@ function handleStatus(status) {
 }
 
 // --- Connexion ---
-connectCollabHub({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, onControl: handleControl, onStatus: handleStatus })
+connectCollabHub({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE, onControl: handleControl, onStatus: handleStatus })
   .then((api) => {
     if (new URLSearchParams(location.search).get('debug') === '1') {
       const diag = document.getElementById('diagnostic');

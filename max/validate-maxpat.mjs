@@ -52,13 +52,50 @@ for (const h of REQUIRED_HEADERS) {
   m ? pass(`header ${h} présent`) : fail(`header ${h} manquant`);
 }
 
-// 6. bouton global + chaîne trigger/pipe
+// 6. bouton global + séquence double passage (register + deliver)
 const tbb = boxes.find(b => b.maxclass === 'newobj' && /^t b b$/.test((b.text || '').trim()));
-const pipes = boxes.filter(b => b.maxclass === 'newobj' && /^pipe\s+0\s+50\s+100\s+150\s+200$/.test((b.text || '').trim()));
 tbb ? pass('trigger "t b b" présent') : fail('trigger "t b b" manquant');
-pipes.length >= 2 ? pass(`${pipes.length} pipes 0 50 100 150 200 (register + deliver)`) : fail('pipes de séquencement manquants');
 const gb = boxes.find(b => b.maxclass === 'button');
 gb ? pass('bouton global présent') : fail('bouton global manquant');
+
+// 6a. ancien mécanisme multi-outlet interdit (pipe 0 50 100 150 200)
+const badPipes = boxes.filter(b => b.maxclass === 'newobj' && /^pipe\s+\d+(\s+\d+){4}$/.test((b.text || '').trim()));
+badPipes.length === 0 ? pass('aucun pipe multi-outlet (ancien mécanisme retiré)') : fail(`${badPipes.length} pipe(s) multi-outlet restant(s): ${badPipes.map(b => b.id).join(', ')}`);
+
+// 6b. send/receive nommé + delay de livraison
+const SEND_NAME = 'ch_pub5';
+const sends = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^send\\s+${SEND_NAME}$`).test((b.text || '').trim()));
+sends.length === 1 ? pass(`send ${SEND_NAME} présent (1)`) : fail(`send ${SEND_NAME} attendu unique, trouvé ${sends.length}`);
+const delay = boxes.find(b => b.maxclass === 'newobj' && /^delay\s+(\d+)\s*$/.exec((b.text || '').trim()));
+delay ? pass(`delay de livraison présent (${delay.text.trim()})`) : fail('delay de livraison manquant (ex: "delay 300")');
+const receives = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^receive\\s+${SEND_NAME}$`).test((b.text || '').trim()));
+receives.length === 5 ? pass(`5 receive ${SEND_NAME} (un par header)`) : fail(`5 receive ${SEND_NAME} attendus, trouvé ${receives.length}`);
+
+// 6c. deux passages : t b b out0 -> send (register) ; t b b out1 -> delay -> send (deliver)
+function destsOf(id, outlet) { return lines.filter(l => l.patchline.source[0] === id && l.patchline.source[1] === outlet).map(l => l.patchline.destination[0]); }
+if (tbb) {
+  const regPass = destsOf(tbb.id, 0).some(id => sends.some(s => s.id === id));
+  regPass ? pass('passage enregistrement : t b b out0 -> send') : fail('passage enregistrement manquant (t b b out0 -> send)');
+  const deliverToDelay = destsOf(tbb.id, 1).some(id => delay && id === delay.id);
+  deliverToDelay ? pass('passage livraison : t b b out1 -> delay') : fail('passage livraison manquant (t b b out1 -> delay)');
+  const delayToSend = delay && destsOf(delay.id, 0).some(id => sends.some(s => s.id === id));
+  delayToSend ? pass('delay -> send (livraison retardée)') : fail('delay non câblé vers send');
+}
+
+// 6d. chaque receive -> une value box distincte -> publish ; 5 headers x 2 passages = 10 déclenchements
+const valueBoxes = boxes.filter(b => b.maxclass === 'message' && !/^publish\s+all\s+/.test(b.text || '') && !/^—/.test(b.text || ''));
+let receiveToPublish = 0;
+for (const r of receives) {
+  const rDest = destsOf(r.id, 0);
+  const vb = rDest.map(id => byId[id]).find(b => b && b.maxclass === 'message' && !/^publish\s+all\s+/.test(b.text || ''));
+  if (vb) {
+    // value box -> publish ?
+    const vbOuts = destsOf(vb.id, 0);
+    const pub = vbOuts.map(id => byId[id]).find(b => b && /^publish\s+all\s+/.test(b.text || ''));
+    if (pub) receiveToPublish++;
+  }
+}
+receiveToPublish === 5 ? pass('5 receive -> value box -> publish (10 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/5 receive câblés vers une publish`);
 
 // 7. chaque publish reçoit une valeur ($1) et va vers ch.client + print
 for (const h of REQUIRED_HEADERS) {
@@ -70,6 +107,10 @@ for (const h of REQUIRED_HEADERS) {
   if (!toClient) fail(`${h}: publish non câblé vers ch.client`);
   if (!toPrint) fail(`${h}: publish non câblé vers print CollabHub-Web-Sender`);
 }
+
+// 8. boutons individuels conservés (un par header -> value box)
+const indButtons = boxes.filter(b => b.maxclass === 'button');
+indButtons.length >= 1 ? pass(`${indButtons.length} bouton(s) (global + individuels)`) : fail('aucun bouton');
 
 console.log(ok ? '\nVALIDATION OK ✅' : '\nVALIDATION ÉCHEC ❌');
 process.exit(ok ? 0 : 1);

@@ -53,7 +53,11 @@ La **1re publication** d'un header l'enregistre seulement (apparaît dans
 `availableControls`) et ne pousse **pas** d'événement `control` aux observers —
 même si l'observer est déjà abonné (prouvé par `scripts/diagnostics/probe-order.mjs`).
 Seule une publication **suivante** déclenche `control` `{from, header, values}`.
-Le patch Max envoie donc chaque champ deux fois (`t b b` + 2 `pipe 0 50 100 150 200`).
+Le patch Max envoie donc chaque champ deux fois : `t b b` (sortie 0 =
+enregistrement immédiat, sortie 1 = livraison après `delay 300`) → `send
+ch_pub5` → 5 `receive ch_pub5` (un par header) → `publish all <header> $1`.
+Mécanisme fiabilisé au Lot 2C (l'ancien `pipe 0 50 100 150 200` ne tirait que
+l'outlet 0 → un seul header par passage). Voir `docs/bmad/04-production-stabilization.md`.
 
 ## Comportement des observers et limite serveur (Lot 1.1)
 
@@ -133,8 +137,10 @@ node max/validate-maxpat.mjs   # ou via npm run check
 
 Vérifie : JSON valide, ids uniques, `lines` vers boxes existants (inlets/outlets
 dans les limites), bpatcher `ch.client.maxpat`, `print CollabHub-Web-Sender`, les
-5 headers, `t b b` + 2 `pipe`, bouton global, chaque publish câblé vers
-`ch.client` + `print`.
+5 headers, `t b b`, `send ch_pub5` + `delay 300` + 5 `receive ch_pub5` (double
+passage register/deliver, 10 déclenchements), bouton global + boutons
+individuels, chaque publish câblé vers `ch.client` + `print`, et **l'absence**
+de l'ancien `pipe 0 50 100 150 200`.
 
 > **Clé Max `lines`** : les patches officiels Collab-Hub (`ch.client.maxpat`,
 > `simple.maxpat`) utilisent la clé `lines` (tableau d'objets `{patchline:…}`),

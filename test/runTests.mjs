@@ -7,6 +7,7 @@ import { normalizeValue, routeControl, KNOWN_HEADERS } from '../src/collabHub/me
 import { createSoundState, DEFAULTS } from '../src/state/soundState.js';
 import { renderField, isSafeHttpUrl } from '../src/ui/renderSoundInfo.js';
 import { createObserveGuard, wireSocket } from '../src/collabHub/observeGuard.js';
+import { resolveAuthMode, resolveAuth, buildSocketUrl } from '../src/collabHub/authMode.js';
 
 // --- Fake DOM minimal (pas de jsdom) ---
 function fakeEl() {
@@ -227,4 +228,48 @@ test('observeGuard : forget permet de réobserver après unobserve', () => {
   g.forget('sound_title');
   assert.equal(g.observeHeaderOnce('sound_title'), true);
   assert.equal(emitted.filter((h) => h === 'sound_title').length, 2);
+});
+
+// --- Mode d'authentification (Lot 2C) ---
+
+// 17. resolveAuth anonymous : AUCUNE requête vers /api/v1/auth/guest
+test('resolveAuth anonymous : aucun fetch /api/v1/auth/guest', async () => {
+  let calls = 0;
+  const fetchImpl = () => { calls++; return Promise.resolve({ ok: false, json: () => Promise.resolve({}) }); };
+  const auth = await resolveAuth({ serverUrl: 'https://server.collab-hub.io', username: 'u', authMode: 'anonymous', fetchImpl });
+  assert.equal(calls, 0, 'anonymous ne doit pas appeler fetch');
+  assert.deepEqual(auth, {});
+});
+
+// 18. resolveAuth guest : tente /api/v1/auth/guest et utilise le token
+test('resolveAuth guest : POST /api/v1/auth/guest + token utilisé', async () => {
+  let calledWith = null;
+  const fetchImpl = (url, opts) => {
+    calledWith = { url, opts };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ accessToken: 'tok-123' }) });
+  };
+  const auth = await resolveAuth({ serverUrl: 'https://server.collab-hub.io', username: 'u', authMode: 'guest', fetchImpl });
+  assert.equal(calledWith.url, 'https://server.collab-hub.io/api/v1/auth/guest');
+  assert.equal(calledWith.opts.method, 'POST');
+  assert.deepEqual(auth, { token: 'tok-123' });
+});
+
+// 19. mode inconnu -> fallback anonyme (safe, pas de fetch)
+test('resolveAuthMode : mode inconnu -> anonymous', async () => {
+  assert.equal(resolveAuthMode('anonymous'), 'anonymous');
+  assert.equal(resolveAuthMode('guest'), 'guest');
+  assert.equal(resolveAuthMode('bogus'), 'anonymous');
+  assert.equal(resolveAuthMode(undefined), 'anonymous');
+  let calls = 0;
+  const fetchImpl = () => { calls++; return Promise.resolve({ ok: false, json: () => Promise.resolve({}) }); };
+  const auth = await resolveAuth({ serverUrl: 'https://server.collab-hub.io', username: 'u', authMode: 'bogus', fetchImpl });
+  assert.equal(calls, 0);
+  assert.deepEqual(auth, {});
+});
+
+// 20. buildSocketUrl conserve le namespace /hub (pas de slash initial)
+test('buildSocketUrl : namespace /hub sans slash initial', () => {
+  assert.equal(buildSocketUrl('https://server.collab-hub.io', 'hub'), 'https://server.collab-hub.io/hub');
+  assert.equal(buildSocketUrl('https://server.collab-hub.io/', '/hub/'), 'https://server.collab-hub.io/hub');
+  assert.equal(buildSocketUrl('https://server.collab-hub.io', ''), 'https://server.collab-hub.io');
 });

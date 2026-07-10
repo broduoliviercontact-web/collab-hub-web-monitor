@@ -53,7 +53,25 @@ Copier `.env.example` en `.env`. Aucun secret.
 |---|---|---|
 | `VITE_COLLAB_HUB_URL` | Serveur Collab-Hub (sans namespace ni slash final) | `https://server.collab-hub.io` |
 | `VITE_COLLAB_HUB_NAMESPACE` | Namespace Socket.IO — **doit valoir `hub`** (voir ci-dessous) | `hub` |
+| `VITE_COLLAB_HUB_AUTH_MODE` | `anonymous` (socket direct, pas d'auth) ou `guest` (voir ci-dessous) | `anonymous` |
 | `VITE_DIAG_ONANY` | (diagnostic) `onAny` au démarrage | `1` |
+
+## Mode d'authentification (`VITE_COLLAB_HUB_AUTH_MODE`)
+
+- **`anonymous`** (défaut, mode production) : le navigateur ouvre un socket
+  Socket.IO **directement** sur Collab-Hub, **sans aucune requête** vers
+  `/api/v1/auth/guest`. C'est le mode attendu pour le serveur public v0.3.4,
+  dont la route d'auth invitée n'existe pas (404). La page n'émet donc ni
+  `OPTIONS` ni `POST` vers `/api/v1/auth/guest`.
+- **`guest`** : tente `POST /api/v1/auth/guest` et utilise le `accessToken`
+  renvoyé (mode pour un serveur v0.5 disposant de cette route) ; en cas
+  d'échec réseau/404, retombe sur l'anonyme.
+- **Toute autre valeur** (ou variable absente) : fallback **safe** vers
+  `anonymous` + un `console.warn` discret. On ne déclenche jamais de fetch
+  inattendu sur le site public.
+
+La logique vit dans `src/collabHub/authMode.js` (`resolveAuthMode`,
+`resolveAuth`, `buildSocketUrl`), testable en Node (Lot 2C).
 
 ## Namespace `/hub` (important)
 
@@ -140,11 +158,17 @@ secrète** — ce sont des valeurs publiques, cuites dans le bundle au build.
 |---|---|
 | `VITE_COLLAB_HUB_URL` | `https://server.collab-hub.io` |
 | `VITE_COLLAB_HUB_NAMESPACE` | `hub` (sans slash initial — le code stripped les slashes) |
+| `VITE_COLLAB_HUB_AUTH_MODE` | `anonymous` (socket direct, pas de `/api/v1/auth/guest`) |
 
 > `VITE_COLLAB_HUB_NAMESPACE` est **obligatoire** : sans elle, le bundle
 > construirait avec un namespace vide (racine `/`) et ne recevrait aucun
 > contrôle publié par Max (qui utilise `/hub`). La valeur `hub` correspond à
 > celle qui fonctionne localement (`.env`).
+>
+> `VITE_COLLAB_HUB_AUTH_MODE=anonymous` garantit que le site public ne génère
+> **ni `OPTIONS` ni `POST`** vers `/api/v1/auth/guest` (route absente du
+> serveur v0.3.4). À ne passer en `guest` que sur un serveur disposant de
+> l'auth invitée.
 
 ### Test distant (Max → site Vercel)
 
@@ -182,14 +206,17 @@ reset au disconnect, réobservation unique à la reconnexion, un listener par
 ## Limites connues
 
 - La **1re publication** d'un header l'enregistre seulement et ne pousse pas la
-  valeur ; le patch Max envoie chaque champ deux fois (register + deliver).
+  valeur ; le patch Max envoie chaque champ deux fois (register + deliver) via
+  `t b b` + `send ch_pub5` / `delay 300` / 5 `receive ch_pub5` (voir
+  `max/README.md`).
 - Aucune persistance ni historique : au rechargement de la page, on repart des
   valeurs par défaut jusqu'à la prochaine publication.
 - Le serveur public v0.3.4 est vieillissant ; un changement d'URL/protocole
   imposerait d'ajuster `.env`.
-- L'auth invitée `/api/v1/auth/guest` est absente du serveur public (404) ; on
-  se connecte en anonyme (fallback). Sur un serveur v0.5, le token serait utilisé
-  automatiquement.
+- L'auth invitée `/api/v1/auth/guest` est absente du serveur public v0.3.4
+  (404). En mode `anonymous` (défaut production), la page n'émet **aucune**
+  requête d'auth : socket direct. Le mode `guest` n'est pertinent que sur un
+  serveur v0.5 disposant de cette route.
 - **Observers côté serveur** : `observedControls` peut contenir des entrées
   `null` et des doublons de usernames (multi-onglets, comportement du serveur
   public 0.3.4). On ne peut pas nettoyer ces anciennes valeurs depuis le client
