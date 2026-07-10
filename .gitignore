@@ -8,3 +8,5 @@ dist
 .vercel
 .env*
 !.env.example
+release-package/
+CollabHub-Web-Monitor-Max-*.zip

@@ -2,6 +2,18 @@
 
 [![CI](https://github.com/broduoliviercontact-web/collab-hub-web-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/broduoliviercontact-web/collab-hub-web-monitor/actions/workflows/ci.yml)
 
+## Release stable
+
+- **Version** : v1.0.0 (2026-07-10).
+- **Production** : https://collab-hub-web-monitor.vercel.app
+- **Release GitHub** : https://github.com/broduoliviercontact-web/collab-hub-web-monitor/releases/tag/v1.0.0
+- **ZIP Max téléchargeable** : `CollabHub-Web-Monitor-Max-v1.0.0.zip` (joint à
+  la release) — contient le patch Max, le README-Max, et `VERSION.txt`.
+- **Procédure rapide** : installer le client Collab-Hub Max → ouvrir le patch
+  → connecter à `https://server.collab-hub.io` → remplir les 5 champs → cliquer
+  **ENVOYER LES 5 CHAMPS** → ouvrir le site web → vérifier « Connecté — Max
+  actif ». Détails : `docs/release/v1.0.0.md` et `max/README.md`.
+
 Page web publique affichant en temps réel le morceau en cours, pilotée depuis
 Max/MSP via Collab-Hub. Une fiche programme / cartouche éditoriale sobre, pas
 un dashboard technique.
