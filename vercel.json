@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/control-room", "destination": "/control-room.html" },
+    { "source": "/control-room/", "destination": "/control-room.html" }
+  ]
+}

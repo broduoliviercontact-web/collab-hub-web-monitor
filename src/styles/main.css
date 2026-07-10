@@ -229,3 +229,73 @@ main.card[data-content-fresh="false"] .block {
 .lk-volume[hidden] { display: none; }
 .lk-volume input[type="range"] { accent-color: var(--accent); }
 #lk-volume-label { min-width: 3em; }
+
+/* ---------- Control Room performer (Lot 4E) ---------- */
+.cr-room { max-width: 520px; }
+.cr-room .block { display: flex; flex-direction: column; gap: 10px; }
+.cr-hint { font-size: 0.8rem; color: var(--text-dim); }
+.cr-error { font-size: 0.85rem; color: #ff9a9a; }
+.cr-room button {
+  font-family: var(--font);
+  font-size: 0.85rem;
+  padding: 7px 12px;
+  background: var(--bg-block-2);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+  align-self: flex-start;
+}
+.cr-room button:hover:not(:disabled) { border-color: var(--accent); }
+.cr-room button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cr-room button:disabled { opacity: 0.45; cursor: not-allowed; }
+.cr-room button[hidden] { display: none; }
+.cr-room input[type="password"], .cr-room select {
+  font-family: var(--font);
+  font-size: 0.9rem;
+  padding: 7px 10px;
+  background: var(--bg-block-2);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.cr-room input[type="range"] { accent-color: var(--accent); }
+.cr-onair {
+  font-size: 0.9rem; font-weight: 700; letter-spacing: 0.12em;
+  color: var(--accent-soft);
+}
+.cr-onair[hidden] { display: none; }
+.cr-info { font-size: 0.78rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; }
+/* VU-mètre */
+.cr-meter {
+  position: relative;
+  height: 14px;
+  background: #000;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cr-meter-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-soft) 0%, var(--accent-soft) 70%, #e6c34a 88%, #d65a5a 100%);
+  transition: width 60ms linear;
+}
+.cr-meter.is-clipping .cr-meter-bar { background: #d65a5a; }
+.cr-meter-peak {
+  position: absolute; top: 0; bottom: 0; left: 0%;
+  width: 2px; background: var(--text); opacity: 0.7;
+}
+.cr-meter-db { font-size: 0.75rem; color: var(--text-dim); }
+@media (prefers-reduced-motion: reduce) {
+  .cr-meter-bar { transition: none; }
+}
+.cr-debug-pre {
+  background: #000; color: #9fe0a0; padding: 8px; margin: 4px 0;
+  max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font-size: 12px; border-radius: 4px;
+}

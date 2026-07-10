@@ -14,7 +14,7 @@
 // Re-export des valeurs string de RoomEvent / Track.Kind / ConnectionState pour
 // injection dans le moteur listener (testable sans livekit-client).
 
-import { Room, RoomEvent, Track, ConnectionState } from 'livekit-client';
+import { Room, RoomEvent, Track, ConnectionState, LocalAudioTrack, AudioPresets } from 'livekit-client';
 
 // roomEvents : valeurs string consommées par le moteur (RoomEvent.X).
 export const roomEvents = {
@@ -33,4 +33,4 @@ export const trackKinds = {
   video: Track.Kind.Video,
 };
 
-export { Room, RoomEvent, Track, ConnectionState };
+export { Room, RoomEvent, Track, ConnectionState, LocalAudioTrack, AudioPresets };

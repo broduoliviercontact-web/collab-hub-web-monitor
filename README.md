@@ -370,12 +370,23 @@ Cloud, indépendamment du flux métadonnées Collab-Hub qui reste inchangé.
   mute, reconnexion native), adaptateur `<audio>`, section publique additive
   « DIRECT AUDIO ». **Gâte par `VITE_LIVEKIT_ENABLED`** via import dynamique :
   tant que la variable est absente/`false`, le SDK `livekit-client` est éliminé du
-  build (aucun chargement). Le performer n'est pas encore câblé à l'UI.
+  build (aucun chargement).
+- **Control Room performer** (`src/control-room/`, Lot 4E) — route `/control-room`
+  (shell `control-room.html`, entrée dynamique `controlRoomPage.js`) : sélection
+  de source (BlackHole/Loopback/interface), permission micro, capture, VU-mètre,
+  master gain, diffusion LiveKit (mot de passe performer, ON AIR, reconnexion),
+  erreurs FR, arrêt/nettoyage. Réutilise le moteur audio (Lot 4B) et le publisher
+  (Lot 4C) sans les dupliquer. **Aucune valeur secrète côté navigateur** (le mot
+  de passe est un paramètre transmis à l'endpoint, jamais stocké ni reflété ;
+  token en mémoire uniquement). Le chunk `livekit-client` n'est chargé **que** sur
+  cette route.
 
-Détails et configuration Vercel : `docs/bmad/10-livekit-token-and-publisher.md`
-et `docs/bmad/11-livekit-public-listener.md`. La diffusion n'est **pas** une
+Détails et configuration Vercel : `docs/bmad/10-livekit-token-and-publisher.md`,
+`docs/bmad/11-livekit-public-listener.md` et
+`docs/bmad/12-control-room-performer.md`. La diffusion n'est **pas** une
 fonctionnalité publique active tant que `VITE_LIVEKIT_ENABLED` reste `false` ;
-la Control Room performer viendra dans un lot ultérieur.
+la Control Room performer est livrée (Lot 4E) mais reste **en développement**
+(pas de release promise).
 
 ## Licence
 

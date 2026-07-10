@@ -2302,3 +2302,746 @@ test('listenerUI : diagnostic panel + extension LiveKit (refreshLivekit)', () =>
     globalThis.document = origDoc;
   }
 });
+
+// ================= Control Room performer — Lot 4E =================
+
+import {
+  deriveCompositeState, broadcastStatus, isOnAir, describeError,
+  derivePermission, COMPOSITE_STATES, PUBLISHER_ACTIVE,
+} from '../src/control-room/controlRoomState.js';
+import { createControlRoomController } from '../src/control-room/controlRoomController.js';
+import {
+  buildControlRoomDOM, renderControlRoom, renderMeter,
+  updateBroadcastEnabled, wireControlRoom,
+} from '../src/control-room/controlRoomView.js';
+
+// --- Faux moteur audio (boundary contrôleur) ---
+function makeFakeAudioEngine({
+  state = 'idle', devices = [], gain = 1, outputStream = null,
+  meter = null, error = null, selectedDeviceId = null, selectedDeviceLabel = null,
+  captureFail = null, permFail = null,
+} = {}) {
+  let st = state, devs = devices.slice(), g = gain, os = outputStream;
+  let mt = meter, err = error, selId = selectedDeviceId, selLabel = selectedDeviceLabel;
+  const listeners = new Set();
+  const calls = { requestPermission: 0, listDevices: 0, selectDevice: 0, startCapture: 0, stopCapture: 0, setMasterGain: 0, destroy: 0 };
+  const notify = () => { const s = snap(); for (const l of listeners) { try { l(s); } catch {} } };
+  function snap() {
+    return {
+      state: st, selectedDeviceId: selId, selectedDeviceLabel: selLabel,
+      devices: devs.slice(), settings: (st === 'capturing') ? { label: selLabel || 'dev' } : null,
+      gain: g, meter: mt ? { ...mt } : null, error: err ? { ...err } : null,
+      hasSourceStream: st === 'capturing', hasOutputStream: !!os, updatedAt: 1,
+    };
+  }
+  return {
+    _calls: calls,
+    _set(s) { st = s; notify(); },
+    _setDevices(d) { devs = d.slice(); notify(); },
+    _setOutputStream(o) { os = o; notify(); },
+    _setMeter(m) { mt = m; },
+    _setError(e) { err = e; st = 'error'; notify(); },
+    async requestPermission() { calls.requestPermission++; if (permFail) { st = 'error'; err = { code: permFail, message: permFail }; notify(); throw err; } st = 'permission_granted'; if (!selId && devs.length) { selId = devs[0].deviceId; selLabel = devs[0].label; } notify(); return { code: 'ok' }; },
+    async listDevices() { calls.listDevices++; return devs.slice(); },
+    selectDevice(id) { calls.selectDevice++; selId = id; const f = devs.find((d) => d.deviceId === id); selLabel = f ? f.label : null; notify(); },
+    async startCapture() { calls.startCapture++; if (st === 'capturing') return; if (captureFail) { st = 'error'; err = { code: captureFail, message: captureFail }; notify(); throw err; } st = 'capturing'; if (!os) os = makeFakeOutputStream(makeFakeMediaTrack()); notify(); },
+    async stopCapture() { calls.stopCapture++; st = 'stopped'; os = null; mt = null; notify(); },
+    setMasterGain(v) { calls.setMasterGain++; g = v; notify(); return g; },
+    readMeter() { return mt ? { ...mt } : { rms: 0, peak: 0, db: -Infinity, clipping: false }; },
+    getOutputStream() { return os; },
+    getSnapshot() { return snap(); },
+    subscribe(l) { listeners.add(l); return () => listeners.delete(l); },
+    getState() { return st; },
+    async destroy() { calls.destroy++; st = 'stopped'; },
+  };
+}
+
+// --- Faux publisher (boundary contrôleur) ---
+function makeFakePublisher({ state = 'idle', fail = null } = {}) {
+  let s = { state, roomName: null, identity: null, participantSid: null, trackSid: null, connected: false, published: false, reconnectCount: 0, lastError: null, connectedAt: null, liveSince: null };
+  const listeners = new Set();
+  const calls = { connect: 0, stop: 0, destroy: 0 };
+  let lastConnectArgs = null;
+  const notify = () => { for (const l of listeners) { try { l({ ...s }); } catch {} } };
+  return {
+    _calls: calls,
+    _lastConnectArgs: () => lastConnectArgs,
+    _set(patch) { s = { ...s, ...patch }; notify(); },
+    async connect({ password, outputStream }) {
+      calls.connect++; lastConnectArgs = { password, outputStream };
+      if (fail) { const e = { code: fail, message: fail }; s = { ...s, state: 'error', lastError: e }; notify(); throw e; }
+      s = { ...s, state: 'live', connected: true, published: true, trackSid: 'pub-1', identity: 'performer-1', roomName: 'main', connectedAt: 1000, liveSince: 1000 };
+      notify(); return s;
+    },
+    async stop() { calls.stop++; s = { state: 'stopped', roomName: null, identity: null, participantSid: null, trackSid: null, connected: false, published: false, reconnectCount: 0, lastError: null, connectedAt: null, liveSince: null }; notify(); },
+    async destroy() { calls.destroy++; s = { ...s, state: 'stopped' }; notify(); },
+    getSnapshot() { return { ...s }; },
+    subscribe(l) { listeners.add(l); return () => listeners.delete(l); },
+    getState() { return s.state; },
+  };
+}
+
+function makeController({ audio, publisher, ...rest } = {}) {
+  return createControlRoomController({
+    audioEngine: audio || makeFakeAudioEngine({ devices: [{ deviceId: 'd1', label: 'BlackHole 2ch' }], outputStream: makeFakeOutputStream(makeFakeMediaTrack()) }),
+    publisher: publisher || makeFakePublisher(),
+    now: () => 1,
+    ...rest,
+  });
+}
+// Moteur audio "prêt à diffuser" : capture en cours + outputStream.
+function readyAudio() {
+  return makeFakeAudioEngine({
+    state: 'capturing',
+    devices: [{ deviceId: 'd1', label: 'BlackHole 2ch' }],
+    outputStream: makeFakeOutputStream(makeFakeMediaTrack()),
+    selectedDeviceId: 'd1', selectedDeviceLabel: 'BlackHole 2ch',
+  });
+}
+
+// ---------- États composites (pur) ----------
+test('crState : COMPOSITE_STATES contient live + error + capturing', () => {
+  assert.ok(COMPOSITE_STATES.includes('live'));
+  assert.ok(COMPOSITE_STATES.includes('error'));
+  assert.ok(COMPOSITE_STATES.includes('capturing'));
+});
+
+test('crState : deriveCompositeState idle/stopped -> idle/stopped', () => {
+  assert.equal(deriveCompositeState('idle', 'idle', false), 'idle');
+  assert.equal(deriveCompositeState('stopped', 'stopped', true), 'stopped');
+});
+
+test('crState : publisher live -> composite live (prioritaire sur audio)', () => {
+  assert.equal(deriveCompositeState('capturing', 'live', true), 'live');
+});
+
+test('crState : audio capturing + publisher idle -> capturing', () => {
+  assert.equal(deriveCompositeState('capturing', 'idle', true), 'capturing');
+});
+
+test('crState : permission_granted sans device -> selecting_device', () => {
+  assert.equal(deriveCompositeState('permission_granted', 'idle', false), 'selecting_device');
+  assert.equal(deriveCompositeState('permission_granted', 'idle', true), 'permission_granted');
+});
+
+test('crState : error prioritaire (publisher ou audio)', () => {
+  assert.equal(deriveCompositeState('capturing', 'error', true), 'error');
+  assert.equal(deriveCompositeState('error', 'idle', true), 'error');
+});
+
+test('crState : broadcastStatus ON AIR seulement pour live', () => {
+  assert.equal(broadcastStatus('live'), 'ON AIR');
+  assert.equal(broadcastStatus('capturing'), 'HORS ANTENNE');
+  assert.equal(broadcastStatus('reconnecting'), 'RECONNEXION…');
+  assert.equal(broadcastStatus('requesting_token'), 'CONNEXION…');
+});
+
+test('crState : isOnAir vrai uniquement pour live', () => {
+  assert.equal(isOnAir('live'), true);
+  assert.equal(isOnAir('capturing'), false);
+});
+
+test('crState : describeError couvre token_unauthorized + permission_denied', () => {
+  assert.equal(describeError('token_unauthorized'), 'Mot de passe incorrect.');
+  assert.ok(describeError('permission_denied').includes('micro'));
+  assert.equal(describeError('no_password'), 'Saisissez le mot de passe performer.');
+  assert.equal(describeError('code_inconnu_xyz'), 'Erreur inconnue.');
+});
+
+test('crState : derivePermission états', () => {
+  assert.equal(derivePermission('requesting_permission', null), 'requesting');
+  assert.equal(derivePermission('idle', { code: 'permission_denied' }), 'denied');
+  assert.equal(derivePermission('capturing', null), 'granted');
+  assert.equal(derivePermission('idle', null), 'not_requested');
+});
+
+test('crState : PUBLISHER_ACTIVE contient live et connecting, pas stopped', () => {
+  assert.ok(PUBLISHER_ACTIVE.has('live'));
+  assert.ok(PUBLISHER_ACTIVE.has('connecting'));
+  assert.ok(!PUBLISHER_ACTIVE.has('stopped'));
+});
+
+// ---------- Contrôleur (30) ----------
+test('crController : construction rejette sans audioEngine', () => {
+  assert.throws(() => createControlRoomController({ audioEngine: null, publisher: makeFakePublisher() }));
+});
+
+test('crController : construction rejette sans publisher', () => {
+  assert.throws(() => createControlRoomController({ audioEngine: makeFakeAudioEngine(), publisher: null }));
+});
+
+test('crController : snapshot initial idle, onAir false, canBroadcast false', () => {
+  const c = makeController({ audio: makeFakeAudioEngine({ state: 'idle', devices: [] }) });
+  const s = c.getSnapshot();
+  assert.equal(s.composite, 'idle');
+  assert.equal(s.onAir, false);
+  assert.equal(s.canBroadcast, false);
+});
+
+test('crController : snapshot ne contient jamais password/token/clé', () => {
+  const c = makeController({ audio: readyAudio() });
+  const s = c.getSnapshot();
+  assert.equal('password' in s, false);
+  assert.equal('token' in s, false);
+  assert.equal('apiKey' in s, false);
+  assert.equal('apiSecret' in s, false);
+});
+
+test('crController : requestPermission appelle audioEngine + ok', async () => {
+  const a = makeFakeAudioEngine({ devices: [{ deviceId: 'd1', label: 'B' }] });
+  const c = makeController({ audio: a });
+  const r = await c.requestPermission();
+  assert.equal(r.ok, true);
+  assert.equal(a._calls.requestPermission, 1);
+});
+
+test('crController : requestPermission permission_denied -> code', async () => {
+  const a = makeFakeAudioEngine({ permFail: 'permission_denied' });
+  const c = makeController({ audio: a });
+  const r = await c.requestPermission();
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'permission_denied');
+});
+
+test('crController : refreshDevices renvoie la liste', async () => {
+  const a = makeFakeAudioEngine({ devices: [{ deviceId: 'd1', label: 'B' }, { deviceId: 'd2', label: 'Mic' }] });
+  const c = makeController({ audio: a });
+  const d = await c.refreshDevices();
+  assert.equal(d.length, 2);
+  assert.equal(a._calls.listDevices, 1);
+});
+
+test('crController : selectDevice transmet à audioEngine', () => {
+  const a = makeFakeAudioEngine({ devices: [{ deviceId: 'd1', label: 'B' }] });
+  const c = makeController({ audio: a });
+  c.selectDevice('d1');
+  assert.equal(a._calls.selectDevice, 1);
+  assert.equal(a.getSnapshot().selectedDeviceId, 'd1');
+});
+
+test('crController : startCapture ok', async () => {
+  const a = makeFakeAudioEngine({ state: 'permission_granted', devices: [{ deviceId: 'd1', label: 'B' }] });
+  const c = makeController({ audio: a });
+  const r = await c.startCapture();
+  assert.equal(r.ok, true);
+  assert.equal(a._calls.startCapture, 1);
+  assert.equal(a.getState(), 'capturing');
+});
+
+test('crController : startCapture échec -> code capture_failed', async () => {
+  const a = makeFakeAudioEngine({ state: 'permission_granted', captureFail: 'capture_failed' });
+  const c = makeController({ audio: a });
+  const r = await c.startCapture();
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'capture_failed');
+});
+
+test('crController : stopCapture appelle audioEngine.stopCapture', async () => {
+  const a = readyAudio();
+  const c = makeController({ audio: a });
+  await c.stopCapture();
+  assert.equal(a._calls.stopCapture, 1);
+});
+
+test('crController : setGain(50) -> setMasterGain(0.5)', () => {
+  const a = readyAudio();
+  const c = makeController({ audio: a });
+  c.setGain(50);
+  assert.equal(a._calls.setMasterGain, 1);
+  assert.equal(a.getSnapshot().gain, 0.5);
+});
+
+test('crController : setGain borne >100 -> 1.0 ; <0 -> 0', () => {
+  const a = readyAudio();
+  const c = makeController({ audio: a });
+  c.setGain(150);
+  assert.equal(a.getSnapshot().gain, 1);
+  c.setGain(-20);
+  assert.equal(a.getSnapshot().gain, 0);
+});
+
+test('crController : startBroadcast sans capture -> no_output_stream', async () => {
+  const a = makeFakeAudioEngine({ state: 'idle', devices: [{ deviceId: 'd1', label: 'B' }] });
+  const c = makeController({ audio: a });
+  const r = await c.startBroadcast('pw');
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'no_output_stream');
+});
+
+test('crController : startBroadcast capture+password -> publisher.connect + ok', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  const r = await c.startBroadcast('pw');
+  assert.equal(r.ok, true);
+  assert.equal(p._calls.connect, 1);
+});
+
+test('crController : startBroadcast transmet le password à publisher.connect', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  await c.startBroadcast('secret123');
+  assert.equal(p._lastConnectArgs().password, 'secret123');
+});
+
+test('crController : startBroadcast sans password -> no_password', async () => {
+  const c = makeController({ audio: readyAudio() });
+  const r = await c.startBroadcast('');
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'no_password');
+});
+
+test('crController : startBroadcast échec token_unauthorized -> code', async () => {
+  const p = makeFakePublisher({ fail: 'token_unauthorized' });
+  const c = makeController({ audio: readyAudio(), publisher: p });
+  const r = await c.startBroadcast('pw');
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'token_unauthorized');
+});
+
+test('crController : startBroadcast échec connect_failed -> code', async () => {
+  const p = makeFakePublisher({ fail: 'connect_failed' });
+  const c = makeController({ audio: readyAudio(), publisher: p });
+  const r = await c.startBroadcast('pw');
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'connect_failed');
+});
+
+test('crController : startBroadcast déjà live -> publisher_busy', async () => {
+  const p = makeFakePublisher({ state: 'live' });
+  const c = makeController({ audio: readyAudio(), publisher: p });
+  const r = await c.startBroadcast('pw');
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'publisher_busy');
+});
+
+test('crController : double-clic gardé (2e appel concurrent bloqué)', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  const p1 = c.startBroadcast('pw');      // synchrone : broadcasting = true
+  const p2 = c.startBroadcast('pw');      // bloqué par le garde
+  const r1 = await p1; const r2 = await p2;
+  assert.equal(r1.ok, true);
+  assert.equal(r2.ok, false);
+  assert.equal(r2.code, 'publisher_busy');
+});
+
+test('crController : startBroadcast succès -> onAir + composite live + ON AIR', async () => {
+  const c = makeController({ audio: readyAudio() });
+  await c.startBroadcast('pw');
+  const s = c.getSnapshot();
+  assert.equal(s.onAir, true);
+  assert.equal(s.composite, 'live');
+  assert.equal(s.broadcastLabel, 'ON AIR');
+});
+
+test('crController : stopBroadcast appelle publisher.stop', async () => {
+  const p = makeFakePublisher({ state: 'live' });
+  const c = makeController({ audio: readyAudio(), publisher: p });
+  await c.stopBroadcast();
+  assert.equal(p._calls.stop, 1);
+});
+
+test('crController : retry = startBroadcast (après erreur)', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  p._set({ state: 'error', lastError: { code: 'disconnected', message: 'x' } });
+  const r = await c.retry('pw');
+  assert.equal(r.ok, true);
+  assert.equal(p._calls.connect, 1);
+});
+
+test('crController : stopAll stoppe publisher + capture', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher({ state: 'live' });
+  const c = makeController({ audio: a, publisher: p });
+  await c.stopAll();
+  assert.equal(p._calls.stop, 1);
+  assert.equal(a._calls.stopCapture, 1);
+});
+
+test('crController : destroy appelle publisher.destroy + audioEngine.destroy', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  await c.destroy();
+  assert.equal(p._calls.destroy, 1);
+  assert.equal(a._calls.destroy, 1);
+});
+
+test('crController : subscriber notifié au changement audioEngine', () => {
+  const a = readyAudio();
+  const c = makeController({ audio: a });
+  let snap = null;
+  c.subscribe((s) => { snap = s; });
+  a._set('stopped');
+  assert.ok(snap !== null);
+  assert.equal(snap.audioState, 'stopped');
+});
+
+test('crController : subscriber notifié au changement publisher', () => {
+  const p = makeFakePublisher();
+  const c = makeController({ publisher: p });
+  let snap = null;
+  c.subscribe((s) => { snap = s; });
+  p._set({ state: 'reconnecting' });
+  assert.ok(snap !== null);
+  assert.equal(snap.publisherState, 'reconnecting');
+  assert.equal(snap.composite, 'reconnecting');
+});
+
+test('crController : error publisher prioritaire -> message describeError', () => {
+  const p = makeFakePublisher();
+  const c = makeController({ publisher: p });
+  p._set({ state: 'error', lastError: { code: 'token_unauthorized', message: 'x' } });
+  const s = c.getSnapshot();
+  assert.equal(s.composite, 'error');
+  assert.equal(s.error.code, 'token_unauthorized');
+  assert.equal(s.error.message, 'Mot de passe incorrect.');
+});
+
+test('crController : error audio quand publisher ok', () => {
+  const a = readyAudio();
+  const c = makeController({ audio: a });
+  a._setError({ code: 'device_not_found', message: 'x' });
+  const s = c.getSnapshot();
+  assert.equal(s.composite, 'error');
+  assert.equal(s.error.code, 'device_not_found');
+});
+
+test('crController : aucun getUserMedia/capture supplémentaire au publish', async () => {
+  const a = readyAudio();
+  const c = makeController({ audio: a });
+  const before = a._calls.startCapture;
+  await c.startBroadcast('pw');
+  assert.equal(a._calls.startCapture, before); // le publish réutilise outputStream
+});
+
+test('crController : canBroadcast vrai quand capture + outputStream + publisher idle', () => {
+  const c = makeController({ audio: readyAudio() });
+  assert.equal(c.getSnapshot().canBroadcast, true);
+});
+
+// ---------- Vue (pure DOM) ----------
+function crSnap(over = {}) {
+  return {
+    composite: 'idle', audioState: 'idle', publisherState: 'idle', onAir: false,
+    permission: 'not_requested', devices: [], selectedDeviceId: null, selectedDeviceLabel: null,
+    settings: null, gain: 1, meter: null, hasOutputStream: false, canBroadcast: false,
+    broadcastLabel: 'HORS ANTENNE', roomName: null, identity: null, trackSid: null,
+    connected: false, published: false, reconnectCount: 0, liveSince: null,
+    error: null, lastActionResult: null, updatedAt: 1, ...over,
+  };
+}
+
+test('crView : build crée 7 sections + root cr-room', () => {
+  const doc = fakeDocument();
+  const { root } = buildControlRoomDOM(doc, null);
+  assert.ok(root.className.includes('cr-room'));
+  const sections = doc._created.filter((e) => e._tag === 'section');
+  assert.equal(sections.length, 7);
+});
+
+test('crView : champ mot de passe type=password + autocomplete off', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  assert.equal(els.password.type, 'password');
+  assert.equal(els.password.autocomplete, 'off');
+});
+
+test('crView : rendu idle -> HORS ANTENNE, onair hidden, stopBroadcast hidden', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap(), els);
+  assert.equal(els.broadcastLabel.textContent, 'HORS ANTENNE');
+  assert.equal(els.onair.hidden, true);
+  assert.equal(els.stopBroadcast.hidden, true);
+});
+
+test('crView : rendu live -> ON AIR, onair visible, stop visible, bouton EN DIFFUSION', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ composite: 'live', publisherState: 'live', onAir: true, broadcastLabel: 'ON AIR' }), els);
+  assert.equal(els.onair.hidden, false);
+  assert.equal(els.stopBroadcast.hidden, false);
+  assert.equal(els.startBroadcast.textContent, 'EN DIFFUSION');
+});
+
+test('crView : rendu error -> message derreur + dot is-off', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ composite: 'error', error: { code: 'token_unauthorized', message: 'Mot de passe incorrect.' } }), els);
+  assert.equal(els.err.textContent, 'Mot de passe incorrect.');
+  assert.ok(els.broadcastDot.getAttribute('class').includes('is-off'));
+});
+
+test('crView : permission denied -> AUTORISER visible "RÉAUTORISER"', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ permission: 'denied' }), els);
+  assert.equal(els.authorize.hidden, false);
+  assert.equal(els.authorize.textContent, 'RÉAUTORISER LE MICRO');
+  assert.equal(els.permState.textContent, 'Micro refusé');
+});
+
+test('crView : permission granted -> authorize hidden, device enabled', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ permission: 'granted', audioState: 'permission_granted', devices: [{ deviceId: 'd1', label: 'B' }], selectedDeviceId: 'd1' }), els);
+  assert.equal(els.authorize.hidden, true);
+  assert.equal(els.device.disabled, false);
+});
+
+test('crView : capturing -> startCapture hidden, stopCapture visible, device disabled', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ audioState: 'capturing', permission: 'granted', selectedDeviceLabel: 'BlackHole', devices: [{ deviceId: 'd1', label: 'B' }] }), els);
+  assert.equal(els.startCapture.hidden, true);
+  assert.equal(els.stopCapture.hidden, false);
+  assert.equal(els.device.disabled, true);
+  assert.ok(els.captureHint.textContent.includes('BlackHole'));
+});
+
+test('crView : devices peuplées dans le select + value sélectionné', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ permission: 'granted', audioState: 'permission_granted', devices: [{ deviceId: 'd1', label: 'BlackHole' }, { deviceId: 'd2', label: 'Mic' }], selectedDeviceId: 'd2' }), els);
+  assert.equal(els.device._options.length, 2);
+  assert.equal(els.device._options[1].label, 'Mic');
+  assert.equal(els.device.value, 'd2');
+});
+
+test('crView : renderMeter null -> bar 0%, dB "—"', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderMeter(null, els);
+  assert.equal(els.meterBar.getAttribute('style'), 'width:0%');
+  assert.equal(els.meterDb.textContent, '—');
+});
+
+test('crView : renderMeter rms/peak/db -> bar 50%, peak 80%, texte dBFS', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderMeter({ rms: 0.5, peak: 0.8, db: -6, clipping: false }, els);
+  assert.equal(els.meterBar.getAttribute('style'), 'width:50%');
+  assert.equal(els.meterPeak.getAttribute('style'), 'left:80%');
+  assert.equal(els.meterDb.textContent, '-6.0 dBFS');
+});
+
+test('crView : renderMeter clipping -> class is-clipping ajoutée', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderMeter({ rms: 1, peak: 1, db: 0, clipping: true }, els);
+  assert.equal(els.meter.classList._c, 'is-clipping'); // fakeDomEl.classList.add stocke dans _c
+});
+
+test('crView : renderMeter db -Infinity -> "-∞ dBFS"', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderMeter({ rms: 0, peak: 0, db: -Infinity, clipping: false }, els);
+  assert.equal(els.meterDb.textContent, '-∞ dBFS');
+});
+
+test('crView : gain 1 -> slider 100 + label 100%', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ gain: 1 }), els);
+  assert.equal(els.gain.value, '100');
+  assert.equal(els.gainLabel.textContent, '100%');
+});
+
+test('crView : updateBroadcastEnabled canBroadcast+password vide -> disabled', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  els._canBroadcast = true;
+  els.password.value = '';
+  updateBroadcastEnabled(els);
+  assert.equal(els.startBroadcast.disabled, true);
+  els.password.value = 'pw';
+  updateBroadcastEnabled(els);
+  assert.equal(els.startBroadcast.disabled, false);
+});
+
+test('crView : wire -> clic DÉMARRER appelle onStartBroadcast(password)', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  let received = null;
+  wireControlRoom({ els, handlers: { onStartBroadcast: (pw) => { received = pw; } } });
+  els.password.value = 'secret';
+  els.startBroadcast._fire('click');
+  assert.equal(received, 'secret');
+});
+
+test('crView : wire -> change device appelle onSelectDevice', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  let received = null;
+  wireControlRoom({ els, handlers: { onSelectDevice: (id) => { received = id; } } });
+  els.device.value = 'd2';
+  els.device._fire('change');
+  assert.equal(received, 'd2');
+});
+
+test('crView : wire -> input gain appelle onGain(int)', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  let received = null;
+  wireControlRoom({ els, handlers: { onGain: (v) => { received = v; } } });
+  els.gain.value = '73';
+  els.gain._fire('input');
+  assert.equal(received, 73);
+});
+
+test('crView : wire -> clic authorize appelle onAuthorize', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  let called = false;
+  wireControlRoom({ els, handlers: { onAuthorize: () => { called = true; } } });
+  els.authorize._fire('click');
+  assert.equal(called, true);
+});
+
+test('crView : dernier échec lastActionResult -> message describeError', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ lastActionResult: { ok: false, code: 'no_password' } }), els);
+  assert.equal(els.lastAction.textContent, 'Saisissez le mot de passe performer.');
+});
+
+test('crView : aucune valeur secrète écrite dans le DOM', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  renderControlRoom(crSnap({ identity: 'performer-1', roomName: 'main', trackSid: 'pub-1' }), els);
+  // Le mot de passe n'est jamais reflété : l'input reste vide hors saisie.
+  assert.equal(els.password.value, '');
+  // Pas de token/clé dans les libellés de statut.
+  assert.ok(!els.status.textContent.includes('token'));
+  assert.ok(!els.err.textContent.includes('secret'));
+});
+
+// ---------- Intégration (contrôleur + faux moteurs, flux complet) ----------
+test('crInteg : flux complet idle -> permission -> capture -> live -> arrêt', async () => {
+  const a = makeFakeAudioEngine({ devices: [{ deviceId: 'd1', label: 'BlackHole' }] });
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  assert.equal(c.getSnapshot().composite, 'idle');
+  await c.requestPermission();
+  assert.equal(c.getSnapshot().composite, 'permission_granted');
+  await c.refreshDevices();
+  c.selectDevice('d1');
+  await c.startCapture();
+  assert.equal(c.getSnapshot().composite, 'capturing');
+  assert.equal(c.getSnapshot().canBroadcast, true);
+  const r = await c.startBroadcast('pw');
+  assert.equal(r.ok, true);
+  assert.equal(c.getSnapshot().onAir, true);
+  await c.stopBroadcast();
+  assert.equal(c.getSnapshot().onAir, false);
+});
+
+test('crInteg : startBroadcast sans password dans le flux -> no_password', async () => {
+  const c = makeController({ audio: readyAudio() });
+  await c.startCapture().catch(() => {});
+  const r = await c.startBroadcast('');
+  assert.equal(r.code, 'no_password');
+});
+
+test('crInteg : échec token -> error + message, puis retry -> live', async () => {
+  const a = readyAudio();
+  let p = makeFakePublisher({ fail: 'token_unauthorized' });
+  const c = makeController({ audio: a, publisher: p });
+  const r = await c.startBroadcast('bad');
+  assert.equal(r.code, 'token_unauthorized');
+  assert.equal(c.getSnapshot().composite, 'error');
+  assert.equal(c.getSnapshot().error.message, 'Mot de passe incorrect.');
+  // Retry avec un publisher sain (simule nouvelle tentative).
+  p = makeFakePublisher();
+  const c2 = createControlRoomController({ audioEngine: a, publisher: p, now: () => 1 });
+  const r2 = await c2.startBroadcast('good');
+  assert.equal(r2.ok, true);
+});
+
+test('crInteg : subscriber reçoit les transitions composite dans l\'ordre', async () => {
+  const a = makeFakeAudioEngine({ devices: [{ deviceId: 'd1', label: 'B' }] });
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  const seen = [];
+  c.subscribe((s) => seen.push(s.composite));
+  await c.requestPermission();
+  await c.startCapture();
+  await c.startBroadcast('pw');
+  assert.ok(seen.includes('permission_granted'));
+  assert.ok(seen.includes('capturing'));
+  assert.ok(seen.includes('live'));
+});
+
+test('crInteg : setGain reflété dans le snapshot', () => {
+  const c = makeController({ audio: readyAudio() });
+  c.setGain(25);
+  assert.equal(c.getSnapshot().gain, 0.25);
+});
+
+test('crInteg : stopAll remet HORS ANTENNE et arrête la capture', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher({ state: 'live' });
+  const c = makeController({ audio: a, publisher: p });
+  await c.stopAll();
+  assert.equal(c.getSnapshot().composite, 'stopped');
+  assert.equal(a.getState(), 'stopped');
+});
+
+test('crInteg : destroy nettoie les deux moteurs (idempotent via fakes)', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  await c.destroy();
+  assert.equal(p._calls.destroy, 1);
+  assert.equal(a._calls.destroy, 1);
+});
+
+test('crInteg : le snapshot ne contient jamais le password durant tout le flux', async () => {
+  const c = makeController({ audio: readyAudio() });
+  await c.startBroadcast('topsecret');
+  const s = c.getSnapshot();
+  assert.equal('password' in s, false);
+  assert.equal('token' in s, false);
+  assert.ok(!JSON.stringify(s).includes('topsecret'));
+});
+
+test('crInteg : view rendu cohérent avec le snapshot live du contrôleur', async () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  const c = makeController({ audio: readyAudio() });
+  c.subscribe((s) => renderControlRoom(s, els));
+  await c.startBroadcast('pw');
+  assert.equal(els.onair.hidden, false);
+  assert.equal(els.broadcastLabel.textContent, 'ON AIR');
+});
+
+test('crInteg : reconnexion publisher -> composite reconnecting, broadcastLabel RECONNEXION…', () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  p._set({ state: 'live' });
+  p._set({ state: 'reconnecting', reconnectCount: 1 });
+  const s = c.getSnapshot();
+  assert.equal(s.composite, 'reconnecting');
+  assert.equal(s.broadcastLabel, 'RECONNEXION…');
+  assert.equal(s.reconnectCount, 1);
+});
+
+test('crInteg : déconnexion involontaire -> error + propose retry (publisher stopped apres error)', async () => {
+  const a = readyAudio();
+  const p = makeFakePublisher();
+  const c = makeController({ audio: a, publisher: p });
+  p._set({ state: 'live' });
+  p._set({ state: 'error', lastError: { code: 'disconnected', message: 'x' } });
+  assert.equal(c.getSnapshot().composite, 'error');
+  // Retry possible : publisher repassé en stopped (après error) puis reconnect.
+  p._set({ state: 'stopped', lastError: null });
+  const r = await c.startBroadcast('pw');
+  assert.equal(r.ok, true);
+});
