@@ -346,6 +346,30 @@ contenu restauré ancien, serveur prioritaire, horloge injectable). Voir
 - Le diagnostic `?debug=1` est accessible à quiconque connaît l'URL (sans
   login) — acceptable pour un outil de spike, à retirer/protéger en production.
 
+## Moteur audio LiveKit (en développement — non public)
+
+Une couche audio temps réel est en cours d'intégration, **non encore exposée sur
+la page publique** (aucun bouton, aucun indicateur, aucun changement visuel).
+Elle vise à diffuser le son du performer (Ableton → BlackHole/Loopback →
+navigateur) vers un futur listener public via LiveKit Cloud, indépendamment du
+flux métadonnées Collab-Hub qui reste inchangé.
+
+État (Lot 4B/4C, non câblé à l'UI) :
+
+- **Moteur audio local** (`src/audio/`) — permission, capture, graphe Web Audio,
+  gain, vumètre (testé, non importé par `src/main.js`).
+- **Endpoint token serverless** (`api/livekit/token.js`) — tokens temporaires
+  (room `main`, identity serveur, TTL 2h, grants par rôle). Variables serveur
+  **uniquement** dans Vercel (`LIVEKIT_URL`, `LIVEKIT_API_KEY`,
+  `LIVEKIT_API_SECRET`, `PERFORMER_PASSWORD` — jamais préfixées `VITE_`, jamais
+  dans le bundle).
+- **Publisher** (`src/audio/livekitPublisher.js`) — connecte le `MediaStream` du
+  moteur à LiveKit (injectable, testé sans réseau).
+
+Détails et configuration Vercel : `docs/bmad/10-livekit-token-and-publisher.md`.
+La diffusion n'est **pas** une fonctionnalité publique disponible ; le listener
+public et la Control Room viendront dans des lots ultérieurs.
+
 ## Licence
 
 - **Licence** : GNU General Public License v3.0 only.

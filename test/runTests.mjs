@@ -1036,3 +1036,554 @@ test('audio : getSnapshot ne expose ni stream/track/graphe ni objet interne', as
   assert.equal(typeof snap.devices[0], 'object');
   eng.destroy();
 });
+
+// ============================================================
+// Lot 4C — endpoint token LiveKit + tokenClient + publisher
+// ============================================================
+import handler, {
+  grantsFor, generateIdentity, validateConfig, safeEqualPassword,
+  ROOM_NAME, TTL_SECONDS,
+} from '../api/livekit/token.js';
+import { requestLiveKitToken, TOKEN_ERRORS } from '../src/livekit/tokenClient.js';
+import { createLiveKitPublisher, PUBLISHER_ERRORS } from '../src/audio/livekitPublisher.js';
+
+const FAKE_ENV = {
+  LIVEKIT_URL: 'wss://test.livekit.cloud',
+  LIVEKIT_API_KEY: 'testkey',
+  LIVEKIT_API_SECRET: 'testsecret',
+  PERFORMER_PASSWORD: 'test-password-long',
+};
+
+function fakeRes() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    status(s) { this.statusCode = s; return this; },
+    setHeader(k, v) { this.headers[k] = v; return this; },
+    json(o) { this.body = o; return this; },
+    end(s) { this.body = s ? JSON.parse(s) : null; return this; },
+  };
+}
+function fakeReq({ method = 'POST', body, headers = {} } = {}) {
+  return { method, body, headers };
+}
+function decodeJwtPayload(token) {
+  return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+}
+async function callEndpoint({ method = 'POST', body, env = FAKE_ENV } = {}) {
+  const req = fakeReq({ method, body });
+  const res = fakeRes();
+  await handler(req, res, env);
+  return res;
+}
+
+// --- Endpoint (20) ---
+
+// 1. GET -> 405 + Allow: POST
+test('livekit/token : GET -> 405 + Allow POST', async () => {
+  const res = await callEndpoint({ method: 'GET' });
+  assert.equal(res.statusCode, 405);
+  assert.equal(res.headers.Allow, 'POST');
+});
+
+// 2. POST body invalide -> 400
+test('livekit/token : body non JSON -> 400', async () => {
+  const res = await callEndpoint({ body: 'not-json{' });
+  assert.equal(res.statusCode, 400);
+});
+
+// 3. rôle inconnu -> 400
+test('livekit/token : rôle inconnu -> 400', async () => {
+  const res = await callEndpoint({ body: { role: 'admin' } });
+  assert.equal(res.statusCode, 400);
+});
+
+// 4. performer sans mot de passe -> 401
+test('livekit/token : performer sans mot de passe -> 401', async () => {
+  const res = await callEndpoint({ body: { role: 'performer' } });
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.error, 'unauthorized');
+});
+
+// 5. performer mot de passe incorrect -> 401
+test('livekit/token : performer mauvais mot de passe -> 401', async () => {
+  const res = await callEndpoint({ body: { role: 'performer', password: 'wrong' } });
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.error, 'unauthorized');
+});
+
+// 6. performer correct -> token
+test('livekit/token : performer correct -> 200 + token', async () => {
+  const res = await callEndpoint({ body: { role: 'performer', password: FAKE_ENV.PERFORMER_PASSWORD } });
+  assert.equal(res.statusCode, 200);
+  assert.ok(typeof res.body.token === 'string' && res.body.token.length > 0);
+});
+
+// 7. listener -> token
+test('livekit/token : listener -> 200 + token', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.equal(res.statusCode, 200);
+  assert.ok(typeof res.body.token === 'string' && res.body.token.length > 0);
+});
+
+// 8. room forcée à main
+test('livekit/token : room forcée à main', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.equal(res.body.room, 'main');
+  assert.equal(decodeJwtPayload(res.body.token).video.room, 'main');
+});
+
+// 9. identity générée serveur (le client n en fournit pas)
+test('livekit/token : identity générée côté serveur', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.ok(typeof res.body.identity === 'string' && res.body.identity.length > 5);
+  assert.equal(decodeJwtPayload(res.body.token).sub, res.body.identity);
+});
+
+// 10. identity performer préfixée
+test('livekit/token : identity performer préfixée', async () => {
+  const res = await callEndpoint({ body: { role: 'performer', password: FAKE_ENV.PERFORMER_PASSWORD } });
+  assert.ok(res.body.identity.startsWith('performer-'));
+});
+
+// 11. identity listener préfixée
+test('livekit/token : identity listener préfixée', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.ok(res.body.identity.startsWith('listener-'));
+});
+
+// 12. grants performer corrects
+test('livekit/token : grants performer (canPublish true, canSubscribe false, canPublishData false)', async () => {
+  const res = await callEndpoint({ body: { role: 'performer', password: FAKE_ENV.PERFORMER_PASSWORD } });
+  const v = decodeJwtPayload(res.body.token).video;
+  assert.equal(v.roomJoin, true);
+  assert.equal(v.canPublish, true);
+  assert.equal(v.canSubscribe, false);
+  assert.equal(v.canPublishData, false);
+});
+
+// 13. grants listener corrects
+test('livekit/token : grants listener (canPublish false, canSubscribe true)', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  const v = decodeJwtPayload(res.body.token).video;
+  assert.equal(v.canPublish, false);
+  assert.equal(v.canSubscribe, true);
+  assert.equal(v.canPublishData, false);
+});
+
+// 14. TTL explicite 2h
+test('livekit/token : TTL explicite 7200s', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.equal(res.body.expiresIn, 7200);
+  const p = decodeJwtPayload(res.body.token);
+  assert.equal(p.exp - p.nbf, 7200);
+});
+
+// 15. config absente -> 503
+test('livekit/token : config absente -> 503', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' }, env: {} });
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.error, 'livekit_unavailable');
+});
+
+// 16. URL absente -> 503
+test('livekit/token : URL absente -> 503', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' }, env: { ...FAKE_ENV, LIVEKIT_URL: '' } });
+  assert.equal(res.statusCode, 503);
+});
+
+// 17. secret absent -> 503
+test('livekit/token : API secret absent -> 503', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' }, env: { ...FAKE_ENV, LIVEKIT_API_SECRET: '' } });
+  assert.equal(res.statusCode, 503);
+});
+
+// 18. aucune API key dans la réponse
+test('livekit/token : réponse sans champ API key', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.equal(res.body.apiKey, undefined);
+  assert.equal(res.body.api_key, undefined);
+  assert.equal(res.body.LIVEKIT_API_KEY, undefined);
+});
+
+// 19. aucun secret dans la réponse
+test('livekit/token : réponse sans champ API secret', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.equal(res.body.apiSecret, undefined);
+  assert.equal(res.body.LIVEKIT_API_SECRET, undefined);
+});
+
+// 20. Cache-Control no-store
+test('livekit/token : header Cache-Control no-store', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.equal(res.headers['Cache-Control'], 'no-store');
+});
+
+// --- tokenClient (12) ---
+
+function fakeFetch({ status = 200, body = {}, ok, throwErr = null } = {}) {
+  const calls = [];
+  const fn = async (url, opts) => {
+    calls.push({ url, opts });
+    if (throwErr) throw throwErr;
+    return { status, ok: ok !== undefined ? ok : (status >= 200 && status < 300), json: async () => body };
+  };
+  fn._calls = calls;
+  return fn;
+}
+const GOOD_BODY = { token: 'jwt-abc', url: 'wss://test.livekit.cloud', room: 'main', identity: 'performer-1', role: 'performer', expiresIn: 7200 };
+
+// 1. succès performer
+test('tokenClient : succès performer', async () => {
+  const f = fakeFetch({ body: GOOD_BODY });
+  const r = await requestLiveKitToken({ role: 'performer', password: 'pw', fetchImpl: f });
+  assert.equal(r.token, 'jwt-abc');
+  assert.equal(r.identity, 'performer-1');
+  assert.equal(f._calls[0].opts.method, 'POST');
+});
+
+// 2. succès listener
+test('tokenClient : succès listener (pas de password envoyé)', async () => {
+  const f = fakeFetch({ body: { ...GOOD_BODY, role: 'listener', identity: 'listener-1' } });
+  const r = await requestLiveKitToken({ role: 'listener', fetchImpl: f });
+  assert.equal(r.role, 'listener');
+  const sent = JSON.parse(f._calls[0].opts.body);
+  assert.equal(sent.password, undefined);
+});
+
+// 3. 401 -> token_unauthorized
+test('tokenClient : 401 -> token_unauthorized', async () => {
+  const f = fakeFetch({ status: 401, body: { error: 'unauthorized' } });
+  await assert.rejects(() => requestLiveKitToken({ role: 'performer', password: 'pw', fetchImpl: f }), (e) => e.code === TOKEN_ERRORS.unauthorized);
+});
+
+// 4. 503 -> token_unavailable
+test('tokenClient : 503 -> token_unavailable', async () => {
+  const f = fakeFetch({ status: 503, body: { error: 'livekit_unavailable' } });
+  await assert.rejects(() => requestLiveKitToken({ role: 'listener', fetchImpl: f }), (e) => e.code === TOKEN_ERRORS.unavailable);
+});
+
+// 5. réponse JSON invalide
+test('tokenClient : JSON invalide -> token_invalid_response', async () => {
+  const f = async () => ({ status: 200, ok: true, json: async () => { throw new Error('bad'); } });
+  await assert.rejects(() => requestLiveKitToken({ role: 'listener', fetchImpl: f }), (e) => e.code === TOKEN_ERRORS.invalid_response);
+});
+
+// 6. token absent
+test('tokenClient : token absent -> token_invalid_response', async () => {
+  const f = fakeFetch({ body: { url: 'wss://x', room: 'main', identity: 'l-1', role: 'listener' } });
+  await assert.rejects(() => requestLiveKitToken({ role: 'listener', fetchImpl: f }), (e) => e.code === TOKEN_ERRORS.invalid_response);
+});
+
+// 7. URL invalide (absente)
+test('tokenClient : URL absente -> token_invalid_response', async () => {
+  const f = fakeFetch({ body: { token: 't', room: 'main', identity: 'l-1', role: 'listener' } });
+  await assert.rejects(() => requestLiveKitToken({ role: 'listener', fetchImpl: f }), (e) => e.code === TOKEN_ERRORS.invalid_response);
+});
+
+// 8. timeout
+test('tokenClient : timeout -> token_timeout', async () => {
+  const f = (url, opts) => new Promise((_, reject) => {
+    if (opts && opts.signal) opts.signal.addEventListener('abort', () => { const e = new Error('ab'); e.name = 'AbortError'; reject(e); });
+  });
+  await assert.rejects(
+    () => requestLiveKitToken({ role: 'listener', fetchImpl: f, timeoutMs: 30 }),
+    (e) => e.code === TOKEN_ERRORS.timeout,
+  );
+});
+
+// 9. erreur réseau
+test('tokenClient : erreur réseau -> token_network_error', async () => {
+  const f = async () => { throw new TypeError('fetch failed'); };
+  await assert.rejects(() => requestLiveKitToken({ role: 'listener', fetchImpl: f }), (e) => e.code === TOKEN_ERRORS.network_error);
+});
+
+// 10. mot de passe non conservé (absent de la valeur renvoyée)
+test('tokenClient : la valeur renvoyée ne contient pas le password', async () => {
+  const f = fakeFetch({ body: GOOD_BODY });
+  const r = await requestLiveKitToken({ role: 'performer', password: 'secret-pw', fetchImpl: f });
+  assert.equal(r.password, undefined);
+  assert.deepEqual(Object.keys(r).sort(), ['expiresIn', 'identity', 'role', 'room', 'token', 'url']);
+});
+
+// 11. aucun token loggué
+test('tokenClient : le token n est pas loggué', async () => {
+  const f = fakeFetch({ body: GOOD_BODY });
+  const logs = [];
+  const origLog = console.log; const origErr = console.error;
+  console.log = (...a) => logs.push(a.join(' '));
+  console.error = (...a) => logs.push(a.join(' '));
+  try {
+    await requestLiveKitToken({ role: 'performer', password: 'pw', fetchImpl: f });
+  } finally {
+    console.log = origLog; console.error = origErr;
+  }
+  assert.ok(!logs.some((l) => l.includes('jwt-abc')), 'le token ne doit pas apparaître dans les logs');
+});
+
+// 12. role invalide rejeté avant fetch
+test('tokenClient : role invalide rejeté avant fetch', async () => {
+  const f = fakeFetch({ body: GOOD_BODY });
+  await assert.rejects(() => requestLiveKitToken({ role: 'admin', fetchImpl: f }), (e) => e.code === TOKEN_ERRORS.failed);
+  assert.equal(f._calls.length, 0);
+});
+
+// --- Publisher (22) ---
+
+function makeFakeMediaTrack({ readyState = 'live' } = {}) {
+  return { kind: 'audio', readyState, _stopped: false, stop() { this._stopped = true; this.readyState = 'ended'; }, getSettings() { return {}; } };
+}
+function makeFakeOutputStream(track) {
+  return { getAudioTracks: () => (track ? [track] : []) };
+}
+function makeFakeTokenClient({ identity = 'performer-test', fail = false } = {}) {
+  const calls = [];
+  return {
+    _calls: calls,
+    async requestLiveKitToken({ role, password }) {
+      calls.push({ role, password });
+      if (fail) throw { code: 'token_unauthorized', message: 'no' };
+      return { token: 'fake-jwt', url: 'wss://test.livekit.cloud', room: 'main', identity, role };
+    },
+  };
+}
+function makeFakeLocalAudioTrackClass() {
+  return function FakeLocalAudioTrack(mediaTrack, opts) {
+    return { _media: mediaTrack, _opts: opts, _stopped: false, sid: 'track-sid-1', stop() { this._stopped = true; } };
+  };
+}
+function makeFakeRoomClass({ connectFail = false, publishFail = false } = {}) {
+  class FakeRoom {
+    constructor(opts) {
+      this.opts = opts;
+      this._connected = false;
+      this._disconnected = false;
+      this._listeners = {};
+      this.localParticipant = {
+        sid: 'part-1',
+        _unpublished: [],
+        _published: [],
+        unpublishTrack(t, stop) { this._unpublished.push({ t, stop }); },
+        async publishTrack(t, o) {
+          if (publishFail) throw new Error('publish failed');
+          const pub = { trackSid: 'pub-1', track: { sid: 'pub-1' } };
+          this._published.push({ t, o, pub });
+          return pub;
+        },
+      };
+      FakeRoom.lastInstance = this;
+    }
+    on(ev, cb) { (this._listeners[ev] = this._listeners[ev] || []).push(cb); }
+    off(ev) { delete this._listeners[ev]; }
+    removeAllListeners() { this._listeners = {}; }
+    _emit(ev, ...args) { (this._listeners[ev] || []).forEach((cb) => cb(...args)); }
+    async connect() { if (connectFail) throw new Error('connect failed'); this._connected = true; }
+    async disconnect() { this._disconnected = true; this._connected = false; }
+  }
+  FakeRoom.lastInstance = null;
+  return FakeRoom;
+}
+function makePublisher({ tokenClient, RoomClass, track, connectFail, publishFail } = {}) {
+  return createLiveKitPublisher({
+    tokenClient: tokenClient || makeFakeTokenClient(),
+    RoomClass: RoomClass || makeFakeRoomClass({ connectFail, publishFail }),
+    LocalAudioTrackClass: makeFakeLocalAudioTrackClass(),
+    now: () => 1000,
+  });
+}
+
+// 1. outputStream absent
+test('publisher : outputStream absent -> no_output_stream', async () => {
+  const p = makePublisher();
+  await assert.rejects(() => p.connect({ password: 'pw', outputStream: null }), (e) => e.code === PUBLISHER_ERRORS.no_output_stream);
+  assert.equal(p.getState(), 'error');
+});
+
+// 2. aucune piste audio
+test('publisher : aucune piste audio -> no_audio_track', async () => {
+  const p = makePublisher();
+  await assert.rejects(() => p.connect({ password: 'pw', outputStream: makeFakeOutputStream(null) }), (e) => e.code === PUBLISHER_ERRORS.no_audio_track);
+});
+
+// 3. piste ended
+test('publisher : piste ended -> no_audio_track', async () => {
+  const p = makePublisher();
+  const track = makeFakeMediaTrack({ readyState: 'ended' });
+  await assert.rejects(() => p.connect({ password: 'pw', outputStream: makeFakeOutputStream(track) }), (e) => e.code === PUBLISHER_ERRORS.no_audio_track);
+});
+
+// 4. token demandé
+test('publisher : un token performer est demandé', async () => {
+  const tc = makeFakeTokenClient();
+  const p = makePublisher({ tokenClient: tc });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(tc._calls.length, 1);
+  assert.equal(tc._calls[0].role, 'performer');
+});
+
+// 5. connexion Room
+test('publisher : Room connectée après connect', async () => {
+  const Room = makeFakeRoomClass();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(Room.lastInstance._connected, true);
+});
+
+// 6. publication
+test('publisher : piste publiée + trackSid', async () => {
+  const Room = makeFakeRoomClass();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(Room.lastInstance.localParticipant._published.length, 1);
+  assert.equal(p.getSnapshot().trackSid, 'pub-1');
+});
+
+// 7. état live
+test('publisher : état live après connect', async () => {
+  const p = makePublisher();
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(p.getState(), 'live');
+});
+
+// 8. double connect bloqué
+test('publisher : double connect bloqué (un seul token)', async () => {
+  const tc = makeFakeTokenClient();
+  const p = makePublisher({ tokenClient: tc });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  await assert.rejects(() => p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) }), (e) => e.code === PUBLISHER_ERRORS.busy);
+  assert.equal(tc._calls.length, 1);
+});
+
+// 9. double publish bloqué
+test('publisher : double publish bloqué', async () => {
+  const p = makePublisher();
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  await assert.rejects(() => p.publish(), (e) => e.code === PUBLISHER_ERRORS.busy);
+});
+
+// 10. stop unpublish (stop=false -> préserve la piste source)
+test('publisher : stop unpublish avec stop=false', async () => {
+  const Room = makeFakeRoomClass();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  await p.stop();
+  assert.equal(Room.lastInstance.localParticipant._unpublished.length, 1);
+  assert.equal(Room.lastInstance.localParticipant._unpublished[0].stop, false);
+});
+
+// 11. stop disconnect
+test('publisher : stop disconnect la Room', async () => {
+  const Room = makeFakeRoomClass();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  await p.stop();
+  assert.equal(Room.lastInstance._disconnected, true);
+});
+
+// 12. stop n arrête pas audioEngine (piste source préservée)
+test('publisher : stop n arrête pas la piste source', async () => {
+  const track = makeFakeMediaTrack();
+  const p = makePublisher();
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(track) });
+  await p.stop();
+  assert.equal(track._stopped, false);
+});
+
+// 13. stop idempotent
+test('publisher : stop idempotent', async () => {
+  const p = makePublisher();
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  await p.stop();
+  await p.stop();
+  assert.equal(p.getState(), 'stopped');
+});
+
+// 14. erreur token nettoie
+test('publisher : erreur token -> error, non connecté', async () => {
+  const tc = makeFakeTokenClient({ fail: true });
+  const p = makePublisher({ tokenClient: tc });
+  await assert.rejects(() => p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) }), (e) => e.code === PUBLISHER_ERRORS.token);
+  assert.equal(p.getState(), 'error');
+  assert.equal(p.getSnapshot().connected, false);
+  assert.equal(p.getSnapshot().identity, null);
+});
+
+// 15. erreur connect nettoie
+test('publisher : erreur connect -> error + Room nettoyée', async () => {
+  const Room = makeFakeRoomClass({ connectFail: true });
+  const p = makePublisher({ RoomClass: Room });
+  await assert.rejects(() => p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) }), (e) => e.code === PUBLISHER_ERRORS.connect);
+  assert.equal(p.getState(), 'error');
+  assert.equal(p.getSnapshot().connected, false);
+});
+
+// 16. erreur publish nettoie
+test('publisher : erreur publish -> error + Room déconnectée', async () => {
+  const Room = makeFakeRoomClass({ publishFail: true });
+  const p = makePublisher({ RoomClass: Room });
+  await assert.rejects(() => p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) }), (e) => e.code === PUBLISHER_ERRORS.publish);
+  assert.equal(p.getState(), 'error');
+  assert.equal(Room.lastInstance._disconnected, true);
+});
+
+// 17. reconnecting
+test('publisher : Reconnecting -> état reconnecting + compteur', async () => {
+  const Room = makeFakeRoomClass();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  Room.lastInstance._emit('reconnecting');
+  assert.equal(p.getState(), 'reconnecting');
+  assert.equal(p.getSnapshot().reconnectCount, 1);
+  await p.destroy();
+});
+
+// 18. reconnected -> live
+test('publisher : Reconnected -> live (piste toujours publiée)', async () => {
+  const Room = makeFakeRoomClass();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  Room.lastInstance._emit('reconnecting');
+  Room.lastInstance._emit('reconnected');
+  assert.equal(p.getState(), 'live');
+  await p.destroy();
+});
+
+// 19. disconnect involontaire -> error
+test('publisher : Disconnected involontaire -> error', async () => {
+  const Room = makeFakeRoomClass();
+  const track = makeFakeMediaTrack();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(track) });
+  Room.lastInstance._emit('disconnected');
+  assert.equal(p.getState(), 'error');
+  assert.equal(p.getSnapshot().lastError.code, PUBLISHER_ERRORS.disconnected);
+  assert.equal(track._stopped, false); // piste source préservée
+  await p.destroy();
+});
+
+// 20. destroy retire les listeners
+test('publisher : destroy retire les listeners Room', async () => {
+  const Room = makeFakeRoomClass();
+  const p = makePublisher({ RoomClass: Room });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  const inst = Room.lastInstance;
+  await p.destroy();
+  assert.equal(Object.keys(inst._listeners).length, 0);
+});
+
+// 21. snapshot sans token
+test('publisher : snapshot sans token', async () => {
+  const p = makePublisher();
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(p.getSnapshot().token, undefined);
+  await p.destroy();
+});
+
+// 22. snapshot sans password
+test('publisher : snapshot sans password', async () => {
+  const p = makePublisher();
+  await p.connect({ password: 'secret-pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(p.getSnapshot().password, undefined);
+  await p.destroy();
+});
