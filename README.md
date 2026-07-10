@@ -1,5 +1,7 @@
 # Collab-Hub Web Monitor
 
+[![CI](https://github.com/broduoliviercontact-web/collab-hub-web-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/broduoliviercontact-web/collab-hub-web-monitor/actions/workflows/ci.yml)
+
 Page web publique affichant en temps réel le morceau en cours, pilotée depuis
 Max/MSP via Collab-Hub. Une fiche programme / cartouche éditoriale sobre, pas
 un dashboard technique.
@@ -196,6 +198,23 @@ npm run build     # sortie dans dist/ (statique, déployable Vercel/Netlify)
 npm run preview   # prévisualiser le build
 npm run check     # test + validation maxpat + build  (vérification complète)
 ```
+
+## Intégration continue (CI)
+
+`.github/workflows/ci.yml` tourne sur chaque `push` (main) et chaque `pull_request`
+vers main, ainsi qu'en `workflow_dispatch`. Ubuntu + Node.js 24 + cache npm.
+
+Étapes : `npm ci` → contrôle des fichiers sensibles suivis par Git
+(`scripts/check-tracked-files.mjs` via `git ls-files`) → `npm test` →
+`node max/validate-maxpat.mjs` → `npm run build` → vérification de
+`dist/index.html` + au moins un asset JS et CSS. Les étapes sont lancées une
+seule fois chacune (pas de `npm run check` pour éviter de dupliquer test +
+validate-maxpat + build). Le dossier `dist` est uploadé en artifact
+`collab-hub-web-monitor-dist` (rétention 7 jours) uniquement sur `main` ou
+`workflow_dispatch` — aucune release automatique.
+
+[Badge CI](https://github.com/broduoliviercontact-web/collab-hub-web-monitor/actions/workflows/ci.yml)
+en tête de ce README.
 
 ## Déploiement Vercel
 
