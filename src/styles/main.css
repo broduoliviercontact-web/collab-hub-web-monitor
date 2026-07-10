@@ -1,0 +1,171 @@
+/* Collab-Hub Web Monitor — fiche programme / cartouche éditoriale.
+   Sobre, sombre, orienté radio expérimentale. */
+
+:root {
+  --bg: #0b0d10;
+  --bg-block: #12161b;
+  --bg-block-2: #161b22;
+  --text: #e8e6e1;
+  --text-dim: #9aa0a8;
+  --accent: #4aa3ff;
+  --accent-soft: #3fd6a6;
+  --rule: #232a33;
+  --maxw: 720px;
+  --radius: 10px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 5vw, 64px);
+  gap: 24px;
+}
+
+main.card {
+  width: 100%;
+  max-width: var(--maxw);
+  background: var(--bg-block);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.block {
+  padding: clamp(20px, 4vw, 36px);
+  border-bottom: 1px solid var(--rule);
+}
+.block:last-child { border-bottom: none; }
+.block--subtitle { background: var(--bg-block-2); }
+
+h1 {
+  margin: 0 0 8px;
+  font-size: clamp(1.6rem, 4.5vw, 2.4rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.author {
+  margin: 0;
+  font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+#sound-subtitle {
+  margin: 0;
+  font-size: clamp(1.05rem, 3vw, 1.3rem);
+  color: var(--text);
+  font-weight: 500;
+}
+
+#sound-description {
+  margin: 0 0 14px;
+  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.link-wrap { margin: 0; }
+.link-wrap[hidden] { display: none; }
+
+#sound-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.95rem;
+  border-bottom: 1px solid transparent;
+  transition: border-color 150ms ease, color 150ms ease;
+  padding: 2px 0;
+}
+#sound-link:hover { border-bottom-color: var(--accent); }
+#sound-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Statut de connexion discret, en pied de page */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-dim);
+  transition: background 200ms ease;
+}
+.status-dot.is-ok { background: var(--accent-soft); }
+.status-dot.is-wait { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.status-dot.is-off { background: #d65a5a; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Micro-transition de mise à jour (fondu) */
+.just-updated {
+  animation: flash 220ms ease-out;
+}
+@keyframes flash {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .just-updated { animation: none; }
+  .status-dot.is-wait { animation: none; }
+  * { transition: none !important; }
+}
+
+/* ---------- Mode diagnostic (?debug=1) ---------- */
+#diagnostic {
+  width: 100%;
+  max-width: 980px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#diagnostic[hidden] { display: none; }
+#diagnostic section {
+  background: #0e1216;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 12px;
+}
+#diagnostic h2 { font-size: 0.95rem; margin: 0 0 8px; color: var(--accent); font-weight: 600; }
+#diagnostic pre {
+  background: #000; color: #9fe0a0; padding: 8px; margin: 4px 0;
+  max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font-size: 12px; border-radius: 4px;
+}
+#diag-errors { color: #ff9a9a; min-height: 1em; }
+#diagnostic input[type="text"], #diagnostic button {
+  font-size: 13px; padding: 3px 8px; background: #1a1f25; color: var(--text);
+  border: 1px solid var(--rule); border-radius: 4px; cursor: pointer;
+}
+#diagnostic label { margin-left: 12px; color: var(--text-dim); }
+#diag-header-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#diag-header-list div { display: flex; align-items: center; gap: 4px; background: #1a1f25; padding: 3px 6px; border-radius: 4px; }
+#diag-header-list code { color: var(--accent); }
+#diag-ctrl-count { color: var(--accent-soft); }

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Fiche programme en temps réel pilotée depuis Max via Collab-Hub." />
+    <meta name="color-scheme" content="dark" />
+    <title>Collab-Hub — Now Playing</title>
+  </head>
+  <body>
+    <main class="card">
+      <section class="block block--title">
+        <h1 id="sound-title">En attente du prochain morceau</h1>
+        <p id="sound-author" class="author">Auteur inconnu</p>
+      </section>
+
+      <section class="block block--subtitle">
+        <p id="sound-subtitle">Connexion à Collab-Hub…</p>
+      </section>
+
+      <section class="block block--description">
+        <p id="sound-description">Les informations seront mises à jour depuis Max.</p>
+        <p class="link-wrap" id="sound-link-wrap" hidden>
+          <a id="sound-link" href="#" target="_blank" rel="noopener noreferrer">En savoir plus</a>
+        </p>
+      </section>
+    </main>
+
+    <footer class="status" aria-live="polite">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Connexion…</span>
+    </footer>
+
+    <!-- Mode diagnostic activé via ?debug=1 — masqué au public par défaut. -->
+    <section id="diagnostic" hidden>
+      <section>
+        <h2>Connexion</h2>
+        <div>État : <span id="diag-conn-state">…</span></div>
+        <div>Socket ID : <span id="diag-socket-id">—</span></div>
+        <div>Erreurs :</div>
+        <pre id="diag-errors"></pre>
+      </section>
+
+      <section>
+        <h2>Headers de test</h2>
+        <div id="diag-header-list"></div>
+        <input id="diag-header-input" type="text" placeholder="header à observer" />
+        <button id="diag-observe-btn">observeControl</button>
+        <button id="diag-unobserve-btn">unobserveControl</button>
+        <button id="diag-observe-all-headers">Observer les 5 champs</button>
+        <label><input id="diag-onany-toggle" type="checkbox" /> mode diagnostic onAny</label>
+      </section>
+
+      <section>
+        <h2>Dernier contrôle reçu — <span id="diag-ctrl-count">Contrôles reçus : 0</span></h2>
+        <pre id="event-log"></pre>
+      </section>
+    </section>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

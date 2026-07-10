@@ -1,0 +1,12 @@
+import { io } from 'socket.io-client';
+const H='sound_title';
+const mk=(u,n)=>io(u,{query:{username:n},transports:['websocket'],reconnection:false,timeout:8000});
+const pub=mk('https://server.collab-hub.io/hub','PubO');
+const sub=mk('https://server.collab-hub.io/hub','SubO');
+const stop=(l)=>{console.log(`--- ${l} ---`);[pub,sub].forEach(s=>{try{s.disconnect()}catch{}});process.exit(0)};
+let r=0;const b=()=>{r++;if(r===2){setTimeout(()=>{console.log('SUB observeControl (AVANT pub)');sub.emit('observeControl',{header:H});},300);setTimeout(()=>{console.log('PUB 1ere publication: '+H+' "Premier morceau"');pub.emit('control',{mode:'publish',target:'all',header:H,values:['Premier morceau']});},1000);}};
+pub.on('connect',()=>{console.log('PUB connected /hub');b();});
+sub.on('connect',()=>{console.log('SUB connected /hub');b();});
+sub.on('control',p=>console.log('SUB RECEIVED control: '+JSON.stringify(p)));
+sub.onAny((n,...a)=>{if(n==='control')console.log('SUB onAny control: '+JSON.stringify(a));});
+setTimeout(()=>stop('timeout 5s'),5000);
