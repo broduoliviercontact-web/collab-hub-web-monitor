@@ -4,15 +4,16 @@
 
 ## Release stable
 
-- **Version** : v1.0.0 (2026-07-10).
+- **Version** : v1.0.1 (2026-07-10).
 - **Production** : https://collab-hub-web-monitor.vercel.app
-- **Release GitHub** : https://github.com/broduoliviercontact-web/collab-hub-web-monitor/releases/tag/v1.0.0
-- **ZIP Max téléchargeable** : `CollabHub-Web-Monitor-Max-v1.0.0.zip` (joint à
-  la release) — contient le patch Max, le README-Max, et `VERSION.txt`.
+- **Release GitHub** : https://github.com/broduoliviercontact-web/collab-hub-web-monitor/releases/tag/v1.0.1
+- **ZIP Max téléchargeable** : `CollabHub-Web-Monitor-Max-v1.0.1.zip` (joint à
+  la release) — contient le patch Max, le README-Max, le fichier `LICENSE` et
+  `VERSION.txt`.
 - **Procédure rapide** : installer le client Collab-Hub Max → ouvrir le patch
   → connecter à `https://server.collab-hub.io` → remplir les 5 champs → cliquer
   **ENVOYER LES 5 CHAMPS** → ouvrir le site web → vérifier « Connecté — Max
-  actif ». Détails : `docs/release/v1.0.0.md` et `max/README.md`.
+  actif ». Détails : `docs/release/v1.0.1.md` et `max/README.md`.
 
 Page web publique affichant en temps réel le morceau en cours, pilotée depuis
 Max/MSP via Collab-Hub. Une fiche programme / cartouche éditoriale sobre, pas
@@ -336,3 +337,17 @@ contenu restauré ancien, serveur prioritaire, horloge injectable). Voir
   nouvel observer (username différent).
 - Le diagnostic `?debug=1` est accessible à quiconque connaît l'URL (sans
   login) — acceptable pour un outil de spike, à retirer/protéger en production.
+
+## Licence
+
+- **Licence** : GNU General Public License v3.0 only.
+- **SPDX** : `GPL-3.0-only`.
+- **Titulaire** : Olivier Brodu.
+- **Année** : 2026.
+- **Copyright** : Copyright (C) 2026 Olivier Brodu.
+
+Le code source, le patch Max et la documentation du dépôt sont couverts par la
+GNU General Public License v3.0 only, sauf mention contraire. Voir le fichier
+[`LICENSE`](./LICENSE) à la racine du dépôt pour le texte officiel complet.
+
+`SPDX-License-Identifier: GPL-3.0-only`

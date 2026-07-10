@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.1] - 2026-07-10
+
+### Added
+- licence GNU General Public License v3.0 only ;
+- fichier `LICENSE` à la racine (texte officiel complet, non modifié) ;
+- licence incluse dans le package Max téléchargeable ;
+- identifiant SPDX `GPL-3.0-only` dans les métadonnées pertinentes.
+
+### Changed
+- nom du package npm interne remplacé par `collab-hub-web-monitor` ;
+- version du package mise à jour vers 1.0.1 ;
+- documentation de distribution mise à jour.
+
+### Fixed
+- absence de licence explicite dans la release v1.0.0.
+
 ## [1.0.0] - 2026-07-10
 
 ### Added
