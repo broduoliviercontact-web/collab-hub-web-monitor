@@ -9,7 +9,7 @@ import { KNOWN_HEADERS } from '../collabHub/messageRouter.js';
 
 const el = (root, id) => root.querySelector(`#${id}`);
 
-export function initDiagnostic(api, root) {
+export function initDiagnostic(api, root, persistence = {}) {
   if (!api || !api.socket || !root) return null;
   const { socket, observeHeaderOnce, observeKnownHeadersOnce, isObserved, forget } = api;
   root.hidden = false;
@@ -23,6 +23,10 @@ export function initDiagnostic(api, root) {
   const headerInput = el(root, 'diag-header-input');
   const headerList = el(root, 'diag-header-list');
   const observeAllBtn = el(root, 'diag-observe-all-headers');
+  const localRestoreEl = el(root, 'diag-local-restore');
+  const localSavedEl = el(root, 'diag-local-saved');
+  const clearLocalBtn = el(root, 'diag-clear-local');
+  const clearStatusEl = el(root, 'diag-clear-status');
 
   let onAnyEnabled = onanyToggle.checked;
   let controlCount = 0;
@@ -49,6 +53,21 @@ export function initDiagnostic(api, root) {
     controlCount++;
     ctrlCount.textContent = `Contrôles reçus : ${controlCount}`;
     logEvent('control', incoming);
+  }
+
+  // --- Persistance locale (Lot 3A) : restauration, dernier save, effacement ---
+  function setLocalSaved(at) { if (localSavedEl) localSavedEl.textContent = at || '—'; }
+  function setLocalRestore(at) { if (localRestoreEl) localRestoreEl.textContent = at || '—'; }
+  if (persistence.initialRestore) setLocalRestore(persistence.initialRestore);
+  if (persistence.initialSaved) setLocalSaved(persistence.initialSaved);
+  if (clearLocalBtn) {
+    clearLocalBtn.addEventListener('click', () => {
+      let ok = true;
+      if (persistence.clear) ok = persistence.clear();
+      setLocalSaved(null);
+      setLocalRestore(null);
+      if (clearStatusEl) clearStatusEl.textContent = ok ? 'État local effacé.' : 'Effacement impossible (storage indisponible).';
+    });
   }
 
   // --- Événements Collab-Hub connus (listeners uniques ; CH-ClientScript.js:546-709) ---
@@ -82,5 +101,5 @@ export function initDiagnostic(api, root) {
   });
 
   recomputeObserveAll();
-  return { setStatus, logControl };
+  return { setStatus, logControl, setLocalSaved, setLocalRestore };
 }

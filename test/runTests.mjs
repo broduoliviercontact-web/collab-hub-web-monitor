@@ -8,6 +8,21 @@ import { createSoundState, DEFAULTS } from '../src/state/soundState.js';
 import { renderField, isSafeHttpUrl } from '../src/ui/renderSoundInfo.js';
 import { createObserveGuard, wireSocket } from '../src/collabHub/observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from '../src/collabHub/authMode.js';
+import {
+  loadSoundState, saveSoundState, clearSoundState,
+  STORAGE_KEY, STORAGE_VERSION,
+} from '../src/state/persist.js';
+
+// --- Faux storage (Map) pour les tests de persistance ---
+function fakeStorage() {
+  const store = new Map();
+  return {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    _has: (k) => store.has(k),
+  };
+}
 
 // --- Fake DOM minimal (pas de jsdom) ---
 function fakeEl() {
@@ -272,4 +287,122 @@ test('buildSocketUrl : namespace /hub sans slash initial', () => {
   assert.equal(buildSocketUrl('https://server.collab-hub.io', 'hub'), 'https://server.collab-hub.io/hub');
   assert.equal(buildSocketUrl('https://server.collab-hub.io/', '/hub/'), 'https://server.collab-hub.io/hub');
   assert.equal(buildSocketUrl('https://server.collab-hub.io', ''), 'https://server.collab-hub.io');
+});
+
+// --- Persistance locale (Lot 3A) ---
+
+const SNAP = {
+  sound_title: 'Morceau A',
+  sound_author: 'Auteur A',
+  sound_subtitle: 'Sous-titre A',
+  sound_description: 'Desc A',
+  sound_link: 'https://example.com/a',
+};
+const FIXED_TS = '2026-07-10T14:00:00.000Z';
+const fixedNow = () => FIXED_TS;
+
+// 1. état valide restauré
+test('persist : état valide restauré depuis localStorage', () => {
+  const st = fakeStorage();
+  saveSoundState(st, SNAP, fixedNow);
+  const r = loadSoundState(st);
+  assert.equal(r.fields.sound_title, 'Morceau A');
+  assert.equal(r.fields.sound_author, 'Auteur A');
+  assert.equal(r.fields.sound_link, 'https://example.com/a');
+  assert.equal(r.updatedAt, FIXED_TS);
+});
+
+// 2. JSON corrompu ignoré
+test('persist : JSON corrompu ignoré (retour défauts)', () => {
+  const st = fakeStorage();
+  st.setItem(STORAGE_KEY, '{not valid json');
+  assert.equal(loadSoundState(st), null);
+});
+
+// 3. version inconnue ignorée
+test('persist : version inconnue ignorée', () => {
+  const st = fakeStorage();
+  st.setItem(STORAGE_KEY, JSON.stringify({ version: 99, updatedAt: FIXED_TS, fields: SNAP }));
+  assert.equal(loadSoundState(st), null);
+});
+
+// 4. header inconnu ignoré, connus conservés
+test('persist : header inconnu ignoré, connus conservés', () => {
+  const st = fakeStorage();
+  st.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, updatedAt: FIXED_TS, fields: { ...SNAP, unknown: 'x', evil: '<script>' } }));
+  const r = loadSoundState(st);
+  assert.equal(r.fields.sound_title, 'Morceau A');
+  assert.equal(r.fields.unknown, undefined);
+  assert.equal(r.fields.evil, undefined);
+});
+
+// 5. type non string ignoré
+test('persist : type non string ignoré', () => {
+  const st = fakeStorage();
+  const bad = { ...SNAP, sound_title: 123, sound_author: { x: 1 }, sound_subtitle: null };
+  st.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, updatedAt: FIXED_TS, fields: bad }));
+  const r = loadSoundState(st);
+  assert.equal(r.fields.sound_title, undefined);
+  assert.equal(r.fields.sound_author, undefined);
+  assert.equal(r.fields.sound_subtitle, undefined);
+  assert.equal(r.fields.sound_link, 'https://example.com/a'); // valide conservé
+});
+
+// 6. sound_link invalide masqué après restauration (validation URL au rendu)
+test('persist : sound_link invalide restauré puis masqué au rendu', () => {
+  const st = fakeStorage();
+  st.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, updatedAt: FIXED_TS, fields: { ...SNAP, sound_link: 'javascript:alert(1)' } }));
+  const r = loadSoundState(st);
+  assert.equal(r.fields.sound_link, 'javascript:alert(1)'); // gardé brut en stockage
+  // Au rendu, la validation URL existante masque le lien invalide.
+  const els = fakeEls();
+  renderField('sound_link', r.fields.sound_link, els);
+  assert.equal(els.linkWrap.hidden, true);
+  assert.equal(els.link.getAttribute('href'), '#');
+});
+
+// 7. sauvegarde après réception d'un contrôle (round-trip via routeControl)
+test('persist : sauvegarde après réception d un contrôle', () => {
+  const st = fakeStorage();
+  const state = createSoundState(DEFAULTS);
+  const routed = routeControl({ header: 'sound_title', values: ['Nouveau morceau'] }, (h, v) => state.set(h, v));
+  assert.equal(routed, true);
+  const saved = saveSoundState(st, state.snapshot(), fixedNow);
+  assert.ok(saved, 'sauvegarde a écrit un payload');
+  const r = loadSoundState(st);
+  assert.equal(r.fields.sound_title, 'Nouveau morceau');
+});
+
+// 8. timestamp sauvegardé
+test('persist : timestamp sauvegardé', () => {
+  const st = fakeStorage();
+  const ts = '2026-07-10T14:05:33.000Z';
+  saveSoundState(st, SNAP, () => ts);
+  const r = loadSoundState(st);
+  assert.equal(r.updatedAt, ts);
+  // le payload brut contient bien updatedAt + version
+  const raw = JSON.parse(st.getItem(STORAGE_KEY));
+  assert.equal(raw.version, STORAGE_VERSION);
+  assert.equal(raw.updatedAt, ts);
+});
+
+// 9. effacement du stockage
+test('persist : clearSoundState efface la clé', () => {
+  const st = fakeStorage();
+  saveSoundState(st, SNAP, fixedNow);
+  assert.equal(st._has(STORAGE_KEY), true);
+  assert.equal(clearSoundState(st), true);
+  assert.equal(st._has(STORAGE_KEY), false);
+  assert.equal(loadSoundState(st), null);
+});
+
+// 10. absence de localStorage ne casse pas l'application
+test('persist : storage nul/manquant ne lève jamais', () => {
+  assert.equal(loadSoundState(null), null);
+  assert.equal(loadSoundState(undefined), null);
+  assert.equal(saveSoundState(null, SNAP, fixedNow), false);
+  assert.equal(clearSoundState(null), false);
+  // storage sans les méthodes attendues
+  assert.equal(loadSoundState({}), null);
+  assert.equal(saveSoundState({}, SNAP, fixedNow), false);
 });

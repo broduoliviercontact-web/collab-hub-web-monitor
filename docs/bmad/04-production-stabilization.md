@@ -156,5 +156,10 @@ Sur le site public https://collab-hub-web-monitor.vercel.app :
 
 ## Hors périmètre
 
-Lot 3 (design) non commencé. Persistance, historique, login, multi-pages :
-hors MVP.
+Lot 3 (design) non commencé.
+
+> **Suite — Lot 3A (persistance locale)** : le dernier contenu reçu est
+> désormais restauré depuis `localStorage` au rechargement. Détails et tests
+> dans `docs/bmad/05-local-persistence.md`. La procédure de validation
+> production ci-dessus reste valable (le restore ne génère aucune requête
+> réseau supplémentaire ; aucun impact sur le mode `anonymous`).

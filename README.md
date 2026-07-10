@@ -25,7 +25,8 @@ src/
 │   ├── observeGuard.js          # observation idempotente par socket.id (pur, testable)
 │   └── messageRouter.js         # normalisation + routage des headers (pur, testable)
 ├── state/
-│   └── soundState.js            # état courant des 5 champs (pur, testable)
+│   ├── soundState.js            # état courant des 5 champs (pur, testable)
+│   └── persist.js               # persistance locale localStorage (Lot 3A, pur, testable)
 ├── ui/
 │   ├── renderSoundInfo.js       # rendu DOM + sécurité du lien (pur, testable)
 │   └── renderConnectionStatus.js# indicateur de connexion
@@ -128,6 +129,32 @@ Les **probes** qui ont établi les faits du protocole (namespace `/hub`,
 sémantique register/deliver, isolation `/` vs `/hub`) sont conservés dans
 `scripts/diagnostics/` (voir `scripts/diagnostics/README.md`).
 
+## Persistance locale (Lot 3A)
+
+Les dernières valeurs reçues sont sauvegardées dans `localStorage` (clé
+versionnée `collabHubSoundState:v1`) afin qu'un **rechargement de page ne
+réinitialise pas immédiatement l'affichage** : on restaure d'abord le dernier
+contenu, puis les publications en temps réel le mettent à jour.
+
+- **À chaque contrôle reçu** : l'état mémoire est mis à jour, puis persisté avec
+  un `updatedAt` (timestamp ISO).
+- **Au chargement** : `loadSoundState` lit `localStorage` et **valide
+  strictement** la structure. Seuls les cinq headers connus et de type string
+  sont restaurés ; tout le reste (JSON corrompu, version inconnue, header
+  inconnu, type non string, champ trop long) est **ignoré** → fallback sur les
+  valeurs par défaut. `sound_link` est **repassé par la validation URL
+  existante** au rendu (http/https uniquement, `javascript:`/`data:`/vide →
+  lien masqué).
+- **Sécurité** : aucune donnée HTML, aucun `innerHTML` (rendu via
+  `textContent`/`setAttribute`), rien n'est envoyé vers un serveur. En cas
+  d'erreur d'accès au storage, l'application ne casse pas.
+- **Diagnostic `?debug=1`** : « Dernière restauration locale », « Dernier état
+  sauvegardé », et un bouton **« Effacer l'état local »** (avec confirmation).
+  Non affiché sur la page publique.
+
+Logique dans `src/state/persist.js` (pur, storage injectable, testable en Node).
+Détails : `docs/bmad/05-local-persistence.md`.
+
 ## Build
 
 ```bash
@@ -181,9 +208,12 @@ secrète** — ce sont des valeurs publiques, cuites dans le bundle au build.
    en temps réel (titre, auteur, sous-titre, description, lien).
 4. Modifier uniquement le titre dans Max → seul le titre change (isolation).
 5. `?debug=1` : https://collab-hub-web-monitor.vercel.app/?debug=1 → panneau
-   de diagnostic (JSON brut, compteur de contrôles, observation idempotente).
-6. Recharger la page → repart des valeurs par défaut jusqu'à la prochaine
-   publication (pas de persistance, par conception).
+   de diagnostic (JSON brut, compteur de contrôles, observation idempotente,
+   persistance locale + bouton « Effacer l'état local »).
+6. Recharger la page → **le dernier contenu reçu est restauré** depuis
+   `localStorage` (persistance Lot 3A), puis mis à jour par les publications en
+   temps réel. Bouton « Effacer l'état local » en `?debug=1` pour repartir des
+   défauts.
 7. Couper/rétablir le réseau → la dernière valeur reste affichée, les nouvelles
    arrivent après reconnexion (réobservation idempotente des 5 headers).
 
@@ -193,15 +223,19 @@ Procédure détaillée et dépannage Max : `max/README.md`. Validation complète
 ## Tests
 
 ```bash
-npm test          # node --test test/runTests.mjs  (21 tests, zéro dépendance)
+npm test          # node --test test/runTests.mjs  (35 tests, zéro dépendance)
 ```
 
 Couvrent : normalisation (tableau 1 ou n éléments, scalaire, absent), routage
 (header inconnu ignoré / connu routé), sécurité du lien (http/https accepté,
 javascript/data/vide refusé), rendu du bon élément, isolation des champs,
-état, et **observation idempotente** (un header émis une fois par socket.id,
+état, **observation idempotente** (un header émis une fois par socket.id,
 reset au disconnect, réobservation unique à la reconnexion, un listener par
-événement, `forget` après unobserve). Voir `docs/bmad/03-lot-1-validation.md`.
+événement, `forget` après unobserve), **mode d'auth** (anonymous/guest/
+inconnu, `/hub` conservé), et **persistance locale** (restauration, corruption,
+version inconnue, header inconnu, type non string, `sound_link` invalidé masqué,
+sauvegarde après contrôle, timestamp, effacement, storage absent). Voir
+`docs/bmad/03-lot-1-validation.md` et `docs/bmad/05-local-persistence.md`.
 
 ## Limites connues
 
@@ -209,8 +243,11 @@ reset au disconnect, réobservation unique à la reconnexion, un listener par
   valeur ; le patch Max envoie chaque champ deux fois (register + deliver) via
   `t b b` + `send ch_pub5` / `delay 300` / 5 `receive ch_pub5` (voir
   `max/README.md`).
-- Aucune persistance ni historique : au rechargement de la page, on repart des
-  valeurs par défaut jusqu'à la prochaine publication.
+- Persistance **locale uniquement** (Lot 3A) : le dernier contenu est restauré
+  depuis `localStorage` au rechargement, mais il n'y a **pas d'historique** ni de
+  multi-postes (chaque navigateur a son propre état). Données validées
+  strictement à la lecture ; données corrompues/incompatibles -> valeurs par
+  défaut. Voir `docs/bmad/05-local-persistence.md`.
 - Le serveur public v0.3.4 est vieillissant ; un changement d'URL/protocole
   imposerait d'ajuster `.env`.
 - L'auth invitée `/api/v1/auth/guest` est absente du serveur public v0.3.4
