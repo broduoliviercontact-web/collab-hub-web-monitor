@@ -627,3 +627,412 @@ test('check-license : constantes stables', () => {
   assert.equal(REQUIRED.name, 'collab-hub-web-monitor');
   assert.equal(REQUIRED.version, '1.0.1');
 });
+
+// ============================================================
+// Lot 4B — moteur audio local (src/audio/*)
+// ============================================================
+import { buildAudioConstraints, captureAudio } from '../src/audio/audioCapture.js';
+import { computeMeterLevel, createAudioMeter } from '../src/audio/audioMeter.js';
+import { createAudioGraph, clampGain } from '../src/audio/audioGraph.js';
+import {
+  isVirtualDevice, normalizeDevice, listAudioInputDevices,
+  findPreferredAudioDevice, requestAudioPermission,
+} from '../src/audio/audioDevices.js';
+import { normalizeCaptureError, isPermissionError } from '../src/audio/audioErrors.js';
+import { createAudioEngine } from '../src/audio/audioEngine.js';
+import { ERROR_CODES } from '../src/audio/constants.js';
+
+// --- Fakes moteur audio (pas de navigateur, pas de device réel) ---
+function makeFakeTrack({ label = 'fake', settings = {} } = {}) {
+  const listeners = {};
+  return {
+    kind: 'audio',
+    label,
+    readyState: 'live',
+    _stopped: false,
+    getSettings() { return { ...settings, label }; },
+    addEventListener(ev, cb) { (listeners[ev] = listeners[ev] || []).push(cb); },
+    removeEventListener() {},
+    stop() { this._stopped = true; this.readyState = 'ended'; },
+    _emit(ev) { (listeners[ev] || []).forEach((cb) => cb()); },
+  };
+}
+function makeFakeStream(tracks) {
+  return {
+    _tracks: tracks,
+    getTracks() { return tracks; },
+    getAudioTracks() { return tracks; },
+  };
+}
+function makeFakeMediaDevices(opts = {}) {
+  const {
+    audioInputs = [{ deviceId: 'default', label: 'Default - Built-in Microphone', kind: 'audioinput', groupId: 'g0' }],
+    deny = false,
+    overconstrainFirst = false,
+    throwOnChannelCount = false,
+    trackLabel,
+  } = opts;
+  const handlers = [];
+  const md = {
+    _calls: [],
+    _handlers: handlers,
+    _lastStream: null,
+    audioInputs,
+    addEventListener(ev, cb) { handlers.push({ ev, cb }); },
+    removeEventListener(ev, cb) {
+      const i = handlers.findIndex((h) => h.ev === ev && h.cb === cb);
+      if (i >= 0) handlers.splice(i, 1);
+    },
+    _emit(ev) { handlers.filter((h) => h.ev === ev).forEach((h) => h.cb()); },
+    async enumerateDevices() { return audioInputs.slice(); },
+    async getUserMedia(constraints) {
+      md._calls.push(constraints);
+      if (deny) { const e = new Error('Permission denied'); e.name = 'NotAllowedError'; throw e; }
+      if (overconstrainFirst && md._calls.length === 1) {
+        const e = new Error('Overconstrained'); e.name = 'OverconstrainedError'; throw e;
+      }
+      if (throwOnChannelCount && constraints.audio && constraints.audio.channelCount) {
+        const e = new Error('Overconstrained'); e.name = 'OverconstrainedError'; throw e;
+      }
+      const t = makeFakeTrack({ label: trackLabel || (audioInputs[0] && audioInputs[0].label) || 'fake' });
+      const s = makeFakeStream([t]);
+      md._lastStream = s;
+      return s;
+    },
+  };
+  return md;
+}
+function makeFakeAnalyser(fill = null) {
+  const base = new Uint8Array(1024); base.fill(128);
+  return {
+    fftSize: 1024,
+    getByteTimeDomainData(arr) {
+      if (fill) { for (let i = 0; i < arr.length; i++) arr[i] = fill[i % fill.length]; }
+      else { for (let i = 0; i < arr.length; i++) arr[i] = base[i]; }
+    },
+  };
+}
+function makeNode() {
+  const conns = [];
+  return { _conns: conns, connect(t) { conns.push(t); }, disconnect() { conns.length = 0; } };
+}
+class FakeAudioContext {
+  constructor() { this._closed = false; this._resumeCalls = 0; this.destination = makeNode(); }
+  createMediaStreamSource() { return makeNode(); }
+  createGain() { const n = makeNode(); n.gain = { value: 1 }; return n; }
+  createAnalyser() { return makeFakeAnalyser(); }
+  createMediaStreamDestination() { const n = makeNode(); n.stream = makeFakeStream([makeFakeTrack({ label: 'out' })]); return n; }
+  async resume() { this._resumeCalls++; }
+  close() { this._closed = true; }
+}
+
+// 1. permission accordée
+test('audio : permission accordée -> permission_granted + devices', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.requestPermission();
+  assert.equal(eng.getState(), 'permission_granted');
+  assert.ok(eng.getSnapshot().devices.length > 0);
+  eng.destroy();
+});
+
+// 2. permission refusée
+test('audio : permission refusée -> erreur permission_denied', async () => {
+  const md = makeFakeMediaDevices({ deny: true });
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await assert.rejects(() => eng.requestPermission(), (e) => e.code === ERROR_CODES.PERMISSION_DENIED);
+  assert.equal(eng.getState(), 'error');
+  assert.equal(eng.getSnapshot().error.code, ERROR_CODES.PERMISSION_DENIED);
+  eng.destroy();
+});
+
+// 3. piste de permission arrêtée
+test('audio : la piste jetable de permission est stoppée', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.requestPermission();
+  const track = md._lastStream.getTracks()[0];
+  assert.equal(track._stopped, true);
+  eng.destroy();
+});
+
+// 4. enumeration uniquement audioinput
+test('audio : listAudioInputDevices ne garde que audioinput', async () => {
+  const md = makeFakeMediaDevices({
+    audioInputs: [
+      { deviceId: 'a', label: 'In', kind: 'audioinput', groupId: 'g1' },
+      { deviceId: 'v', label: 'Cam', kind: 'videoinput', groupId: 'g2' },
+      { deviceId: 'o', label: 'Out', kind: 'audiooutput', groupId: 'g3' },
+    ],
+  });
+  const list = await listAudioInputDevices(md);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].deviceId, 'a');
+});
+
+// 5. préférence BlackHole
+test('audio : findPreferredAudioDevice privilégie BlackHole', () => {
+  const devs = [
+    { deviceId: 'd1', label: 'Default - Built-in', isDefault: true, isVirtual: false },
+    { deviceId: 'bh', label: 'BlackHole 2ch', isDefault: false, isVirtual: true },
+  ];
+  const pref = findPreferredAudioDevice(devs, null);
+  assert.equal(pref.deviceId, 'bh');
+});
+
+// 6. préférence deviceId existant
+test('audio : findPreferredAudioDevice respecte le deviceId précédent', () => {
+  const devs = [
+    { deviceId: 'bh', label: 'BlackHole 2ch', isDefault: false, isVirtual: true },
+    { deviceId: 'd1', label: 'Default', isDefault: true, isVirtual: false },
+  ];
+  const pref = findPreferredAudioDevice(devs, 'd1');
+  assert.equal(pref.deviceId, 'd1');
+});
+
+// 7. fallback périphérique par défaut
+test('audio : findPreferredAudioDevice retombe sur le défaut sans virtuel', () => {
+  const devs = [
+    { deviceId: 'x', label: 'Mic', isDefault: false, isVirtual: false },
+    { deviceId: 'd1', label: 'Default', isDefault: true, isVirtual: false },
+  ];
+  const pref = findPreferredAudioDevice(devs, null);
+  assert.equal(pref.deviceId, 'd1');
+});
+
+// 8. contraintes désactivant les traitements voix
+test('audio : buildAudioConstraints désactive EC/NS/AGC + channelCount idéal 2', () => {
+  const c = buildAudioConstraints('dev1');
+  assert.equal(c.audio.echoCancellation, false);
+  assert.equal(c.audio.noiseSuppression, false);
+  assert.equal(c.audio.autoGainControl, false);
+  assert.deepEqual(c.audio.deviceId, { exact: 'dev1' });
+  assert.deepEqual(c.audio.channelCount, { ideal: 2 });
+  assert.equal(c.video, false);
+});
+
+// 9. fallback sans channelCount
+test('audio : captureAudio retire channelCount au 2e tentative (Overconstrained)', async () => {
+  const md = makeFakeMediaDevices({ overconstrainFirst: true });
+  await captureAudio(md, 'dev1');
+  assert.ok(md._calls[0].audio.channelCount !== undefined);
+  assert.equal(md._calls[1].audio.channelCount, undefined);
+});
+
+// 10. erreur PermissionDenied non masquée (pas de fallback)
+test('audio : captureAudio ne tente pas de fallback sur PermissionDenied', async () => {
+  const md = makeFakeMediaDevices({ deny: true });
+  await assert.rejects(() => captureAudio(md, 'dev1'), (e) => e.code === ERROR_CODES.PERMISSION_DENIED);
+  assert.equal(md._calls.length, 1);
+});
+
+// 11. capture démarre
+test('audio : startCapture -> état capturing', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  assert.equal(eng.getState(), 'capturing');
+  eng.destroy();
+});
+
+// 12. settings exposés
+test('audio : snapshot expose les settings réels après capture', async () => {
+  const md = makeFakeMediaDevices({ trackLabel: 'BlackHole 2ch' });
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  assert.equal(eng.getSnapshot().settings.label, 'BlackHole 2ch');
+  eng.destroy();
+});
+
+// 13. double start ne crée pas deux captures
+test('audio : double startCapture ne crée pas un second stream', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  await eng.startCapture();
+  assert.equal(md._calls.length, 1);
+  eng.destroy();
+});
+
+// 14. stop arrête toutes les pistes
+test('audio : stopCapture arrête les pistes', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  const track = md._lastStream.getTracks()[0];
+  await eng.stopCapture();
+  assert.equal(track._stopped, true);
+  eng.destroy();
+});
+
+// 15. stop ferme AudioContext
+test('audio : stopCapture ferme l AudioContext', async () => {
+  const md = makeFakeMediaDevices();
+  const ctxRef = [];
+  class Ctx extends FakeAudioContext { constructor() { super(); ctxRef.push(this); } }
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: Ctx });
+  await eng.startCapture();
+  await eng.stopCapture();
+  assert.equal(ctxRef[0]._closed, true);
+  eng.destroy();
+});
+
+// 16. stop idempotent
+test('audio : stopCapture est idempotent', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  await eng.stopCapture();
+  await eng.stopCapture();
+  assert.equal(eng.getState(), 'stopped');
+  eng.destroy();
+});
+
+// 17. gain borné à 0
+test('audio : setMasterGain borne à 0', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  assert.equal(eng.setMasterGain(-1), 0);
+  assert.equal(eng.getSnapshot().gain, 0);
+  eng.destroy();
+});
+
+// 18. gain borné à 1
+test('audio : setMasterGain borne à 1', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  assert.equal(eng.setMasterGain(2), 1);
+  assert.equal(eng.getSnapshot().gain, 1);
+  eng.destroy();
+});
+
+// 19. outputStream exposé
+test('audio : getOutputStream exposé après capture', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  assert.ok(eng.getOutputStream(), 'outputStream doit être non null');
+  assert.equal(eng.getSnapshot().hasOutputStream, true);
+  eng.destroy();
+});
+
+// 20. pas de monitoring vers context.destination
+test('audio : le graphe ne connecte rien à context.destination', () => {
+  const stream = makeFakeStream([makeFakeTrack()]);
+  const graph = createAudioGraph({ stream, AudioContextClass: FakeAudioContext });
+  const dest = graph.context.destination;
+  const connectedToDest = [graph.sourceNode, graph.gainNode, graph.analyserNode, graph.destinationNode]
+    .some((n) => n && Array.isArray(n._conns) && n._conns.includes(dest));
+  assert.equal(connectedToDest, false);
+  graph.close();
+});
+
+// 21. calcul RMS
+test('audio : computeMeterLevel calcule le RMS', () => {
+  const buf = new Uint8Array([255, 1, 255, 1]);
+  const lvl = computeMeterLevel(buf);
+  assert.ok(lvl.rms > 0.98 && lvl.rms <= 1);
+});
+
+// 22. calcul peak
+test('audio : computeMeterLevel calcule le peak', () => {
+  const buf = new Uint8Array([200, 128, 128]);
+  const lvl = computeMeterLevel(buf);
+  assert.ok(Math.abs(lvl.peak - (200 - 128) / 128) < 1e-6);
+});
+
+// 23. calcul dBFS
+test('audio : computeMeterLevel calcule le dBFS', () => {
+  const buf = new Uint8Array([255, 1]);
+  const lvl = computeMeterLevel(buf);
+  assert.ok(lvl.db > -1 && lvl.db <= 0);
+});
+
+// 24. détection clipping
+test('audio : computeMeterLevel détecte le clipping (peak > 0.99)', () => {
+  const buf = new Uint8Array([255, 1]);
+  assert.equal(computeMeterLevel(buf).clipping, true);
+});
+
+// 25. silence correctement représenté
+test('audio : silence -> rms 0, peak 0, db -Infinity, pas de clipping', () => {
+  const buf = new Uint8Array(8).fill(128);
+  const lvl = computeMeterLevel(buf);
+  assert.equal(lvl.rms, 0);
+  assert.equal(lvl.peak, 0);
+  assert.equal(lvl.db, -Infinity);
+  assert.equal(lvl.clipping, false);
+});
+
+// 26. track ended déclenche l'état erreur
+test('audio : fin de piste inattendue -> état error track_ended', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  const track = md._lastStream.getTracks()[0];
+  track._emit('ended');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(eng.getState(), 'error');
+  assert.equal(eng.getSnapshot().error.code, ERROR_CODES.TRACK_ENDED);
+  eng.destroy();
+});
+
+// 27. devicechange rafraîchit les devices
+test('audio : devicechange rafraîchit la liste des devices', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.requestPermission();
+  const before = eng.getSnapshot().devices.length;
+  md.audioInputs.push({ deviceId: 'new', label: 'New Device', kind: 'audioinput', groupId: 'g9' });
+  md._emit('devicechange');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(eng.getSnapshot().devices.length, before + 1);
+  eng.destroy();
+});
+
+// 28. listener devicechange non dupliqué
+test('audio : un seul listener devicechange, retiré au destroy', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  assert.equal(md._handlers.length, 1);
+  await eng.destroy();
+  assert.equal(md._handlers.length, 0);
+});
+
+// 29. destroy libère tout
+test('audio : destroy libère capture, graphe, listeners, devicechange', async () => {
+  const md = makeFakeMediaDevices();
+  const ctxRef = [];
+  class Ctx extends FakeAudioContext { constructor() { super(); ctxRef.push(this); } }
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: Ctx });
+  await eng.startCapture();
+  const track = md._lastStream.getTracks()[0];
+  let notified = 0;
+  eng.subscribe(() => notified++);
+  await eng.destroy();
+  assert.equal(track._stopped, true);
+  assert.equal(ctxRef[0]._closed, true);
+  assert.equal(md._handlers.length, 0);
+  assert.equal(eng.getState(), 'stopped');
+});
+
+// 30. getSnapshot ne divulgue aucun objet sensible ou interne inutile
+test('audio : getSnapshot ne expose ni stream/track/graphe ni objet interne', async () => {
+  const md = makeFakeMediaDevices();
+  const eng = createAudioEngine({ mediaDevices: md, AudioContextClass: FakeAudioContext });
+  await eng.startCapture();
+  const snap = eng.getSnapshot();
+  const keys = Object.keys(snap).sort();
+  assert.deepEqual(keys, [
+    'devices', 'error', 'gain', 'hasOutputStream', 'hasSourceStream',
+    'meter', 'selectedDeviceId', 'selectedDeviceLabel', 'settings', 'state', 'updatedAt',
+  ]);
+  assert.equal(snap.stream, undefined);
+  assert.equal(snap.track, undefined);
+  assert.equal(snap.graph, undefined);
+  assert.ok(snap.meter && typeof snap.meter === 'object');
+  assert.deepEqual(Object.keys(snap.meter).sort(), ['clipping', 'db', 'peak', 'rms']);
+  assert.ok(Array.isArray(snap.devices));
+  assert.equal(typeof snap.devices[0], 'object');
+  eng.destroy();
+});
