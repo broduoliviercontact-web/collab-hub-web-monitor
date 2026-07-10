@@ -217,14 +217,22 @@ npm run check     # test + validation maxpat + build  (vérification complète)
 `.github/workflows/ci.yml` tourne sur chaque `push` (main) et chaque `pull_request`
 vers main, ainsi qu'en `workflow_dispatch`. Ubuntu + Node.js 24 + cache npm.
 
-Étapes : `npm ci` → contrôle des fichiers sensibles suivis par Git
-(`scripts/check-tracked-files.mjs` via `git ls-files`) → `npm test` →
-`node max/validate-maxpat.mjs` → `npm run build` → vérification de
-`dist/index.html` + au moins un asset JS et CSS. Les étapes sont lancées une
-seule fois chacune (pas de `npm run check` pour éviter de dupliquer test +
-validate-maxpat + build). Le dossier `dist` est uploadé en artifact
-`collab-hub-web-monitor-dist` (rétention 7 jours) uniquement sur `main` ou
-`workflow_dispatch` — aucune release automatique.
+Étapes (chacune exécutée une seule fois) : `npm ci` → contrôle des fichiers
+sensibles suivis par Git (`scripts/check-tracked-files.mjs` via `git ls-files`) →
+**contrôle des métadonnées de licence GPL-3.0-only** (`scripts/check-license.mjs`)
+→ `npm test` → `node max/validate-maxpat.mjs` → `npm run build` → vérification de
+`dist/index.html` + au moins un asset JS et CSS (messages d'erreur explicites). La
+CI vérifie donc : fichiers sensibles, métadonnées GPL-3.0-only (LICENSE, package,
+README), tests, patch Max, build, artefacts générés. Pas de `npm run check` en CI
+(pour ne pas dupliquer test + validate-maxpat + build, déjà lancés séparément).
+Le dossier `dist` est uploadé en artifact `collab-hub-web-monitor-dist`
+(rétention 7 jours) uniquement sur `main` ou `workflow_dispatch` — aucune release
+automatique.
+
+Permissions minimales (`contents: read` uniquement). Concurrence :
+`cancel-in-progress` sur le groupe `ci-${{ github.workflow }}-${{ github.ref }}`
+(un nouveau commit sur la même branche annule l'ancien run ; pas de collision
+entre workflows ni entre branches).
 
 [Badge CI](https://github.com/broduoliviercontact-web/collab-hub-web-monitor/actions/workflows/ci.yml)
 en tête de ce README.
@@ -289,7 +297,7 @@ Procédure détaillée et dépannage Max : `max/README.md`. Validation complète
 ## Tests
 
 ```bash
-npm test          # node --test test/runTests.mjs  (48 tests, zéro dépendance)
+npm test          # node --test test/runTests.mjs  (57 tests, zéro dépendance)
 ```
 
 Couvrent : normalisation (tableau 1 ou n éléments, scalaire, absent), routage
