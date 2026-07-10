@@ -5,3 +5,6 @@ dist
 *.log
 .claude/
 .spike-research/
+.vercel
+.env*
+!.env.example

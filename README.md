@@ -118,6 +118,54 @@ npm run preview   # prévisualiser le build
 npm run check     # test + validation maxpat + build  (vérification complète)
 ```
 
+## Déploiement Vercel
+
+L'application est une **SPA statique** (Vite, sans backend, sans fonctions
+serverless). Vercel ne sert que les assets ; le navigateur se connecte
+**directement** à Collab-Hub via WebSocket (aucune dépendance à Vercel pour le
+temps réel).
+
+- **Production** : https://collab-hub-web-monitor.vercel.app
+- **Dépôt GitHub connecté** : `broduoliviercontact-web/collab-hub-web-monitor`
+  (chaque push sur `main` redéploie automatiquement).
+- **Framework Preset** : Vite · **Root Directory** : racine du dépôt ·
+  **Build Command** : `npm run build` · **Output Directory** : `dist`.
+
+### Variables d'environnement Vercel
+
+À configurer dans le projet Vercel (Production + Preview). **Aucune n'est
+secrète** — ce sont des valeurs publiques, cuites dans le bundle au build.
+
+| Variable | Valeur |
+|---|---|
+| `VITE_COLLAB_HUB_URL` | `https://server.collab-hub.io` |
+| `VITE_COLLAB_HUB_NAMESPACE` | `hub` (sans slash initial — le code stripped les slashes) |
+
+> `VITE_COLLAB_HUB_NAMESPACE` est **obligatoire** : sans elle, le bundle
+> construirait avec un namespace vide (racine `/`) et ne recevrait aucun
+> contrôle publié par Max (qui utilise `/hub`). La valeur `hub` correspond à
+> celle qui fonctionne localement (`.env`).
+
+### Test distant (Max → site Vercel)
+
+1. Ouvrir le site public : https://collab-hub-web-monitor.vercel.app (sans
+   paramètre) → « Connecté » ; le `serverMessage` annonce
+   `Collab-Hub Version: 0.3.4. You're in Namespace /hub`.
+2. Connecter le CH-Client Max à `https://server.collab-hub.io`, attendre la
+   version 0.3.4 (identique côté Max et côté site).
+3. Cliquer **ENVOYER LES 5 CHAMPS** dans Max → les trois blocs se remplissent
+   en temps réel (titre, auteur, sous-titre, description, lien).
+4. Modifier uniquement le titre dans Max → seul le titre change (isolation).
+5. `?debug=1` : https://collab-hub-web-monitor.vercel.app/?debug=1 → panneau
+   de diagnostic (JSON brut, compteur de contrôles, observation idempotente).
+6. Recharger la page → repart des valeurs par défaut jusqu'à la prochaine
+   publication (pas de persistance, par conception).
+7. Couper/rétablir le réseau → la dernière valeur reste affichée, les nouvelles
+   arrivent après reconnexion (réobservation idempotente des 5 headers).
+
+Procédure détaillée et dépannage Max : `max/README.md`. Validation complète :
+`docs/bmad/03-lot-1-validation.md`.
+
 ## Tests
 
 ```bash
