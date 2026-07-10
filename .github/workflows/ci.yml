@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check tracked files
+        run: node scripts/check-tracked-files.mjs
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate Max patch
+        run: node max/validate-maxpat.mjs
+
+      - name: Build application
+        run: npm run build
+
+      - name: Verify build output
+        shell: bash
+        run: |
+          test -f dist/index.html
+          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
+          find dist/assets -maxdepth 1 -type f -name '*.css' -print -quit | grep -q .
+
+      - name: Upload production build artifact
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        uses: actions/upload-artifact@v4
+        with:
+          name: collab-hub-web-monitor-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
