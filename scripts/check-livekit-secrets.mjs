@@ -14,17 +14,23 @@
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
+// codeOnly: true -> pattern testé uniquement dans le code source (un identifiant
+// cité en documentation .md n'est pas une fuite ; un .env réel est déjà couvert
+// par check-tracked-files + le skip de .env.example ci-dessous).
 const FORBIDDEN_PATTERNS = [
-  { re: /VITE_LIVEKIT_API_KEY\b/, msg: 'VITE_LIVEKIT_API_KEY interdit (secret jamais VITE_-préfixé)' },
-  { re: /VITE_LIVEKIT_API_SECRET\b/, msg: 'VITE_LIVEKIT_API_SECRET interdit (secret jamais VITE_-préfixé)' },
-  // JWT littéral commité : header.payload.signature, base64url.
+  { re: /VITE_LIVEKIT_API_KEY\b/, msg: 'VITE_LIVEKIT_API_KEY interdit (secret jamais VITE_-préfixé)', codeOnly: true },
+  { re: /VITE_LIVEKIT_API_SECRET\b/, msg: 'VITE_LIVEKIT_API_SECRET interdit (secret jamais VITE_-préfixé)', codeOnly: true },
+  // JWT littéral commité : header.payload.signature, base64url. Partout (y compris .md).
   { re: /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/, msg: 'JWT littéral commité interdit' },
 ];
+
+const CODE_EXT = /\.(js|mjs|cjs|ts|tsx|jsx)$/i;
 
 // Fichiers dont on ne scanne pas le contenu (déjà couverts par check-tracked-files,
 // ou binaires/non textuels).
 const SKIP_PATH = [
   /^\.env\.example$/, // placeholders factices autorisés
+  /^scripts\/check-livekit-secrets\.mjs$/, // ne se scanne pas lui-même
   /^node_modules\//,
   /^dist\//,
   /^package-lock\.json$/,
@@ -54,7 +60,8 @@ function scan() {
     if (!isText(path)) continue;
     let content;
     try { content = readFileSync(path, 'utf8'); } catch { continue; }
-    for (const { re, msg } of FORBIDDEN_PATTERNS) {
+    for (const { re, msg, codeOnly } of FORBIDDEN_PATTERNS) {
+      if (codeOnly && !CODE_EXT.test(path)) continue;
       if (re.test(content)) violations.push({ path, msg });
     }
   }

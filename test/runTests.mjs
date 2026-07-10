@@ -1587,3 +1587,718 @@ test('publisher : snapshot sans password', async () => {
   assert.equal(p.getSnapshot().password, undefined);
   await p.destroy();
 });
+// Lot 4D — moteur listener LiveKit + adaptateur audio + UI publique
+// ============================================================
+import { createLiveKitListener, LISTENER_ERRORS, DEFAULT_VOLUME } from '../src/livekit/livekitListener.js';
+import { createListenerAudioElement } from '../src/listener/listenerAudioElement.js';
+import {
+  isLiveKitEnabled, STATUS_LABELS, buildListenerDOM,
+  renderListenerState, wireListenerControls,
+} from '../src/listener/listenerUI.js';
+import { initDiagnostic } from '../src/diagnostic/diagnosticPanel.js';
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+// --- Faux DOM riche (avec addEventListener) pour les tests UI ---
+function fakeDomEl({ checked = false } = {}) {
+  const handlers = {};
+  return {
+    textContent: '', hidden: false, checked, disabled: false,
+    className: '', value: '', _attrs: {}, _parent: null,
+    classList: { add(c) { this._c = c; }, remove() {}, contains() { return false; } },
+    setAttribute(k, v) { this._attrs[k] = v; },
+    getAttribute(k) { return this._attrs[k]; },
+    appendChild(c) { if (c && typeof c === 'object') c._parent = this; return c; },
+    append(...cs) { cs.forEach((c) => { if (c && typeof c === 'object') c._parent = this; }); },
+    addEventListener(ev, cb) { (handlers[ev] = handlers[ev] || []).push(cb); },
+    removeEventListener() {},
+    _fire(ev, ...args) { (handlers[ev] || []).forEach((cb) => cb(...args)); },
+    _handlers: handlers,
+  };
+}
+
+// --- Faux document : querySelector('#id') renvoie un fakeDomEl mémorisé ---
+function fakeDocument() {
+  const cache = new Map();
+  const created = [];
+  const doc = {
+    createElement(tag) {
+      const e = fakeDomEl();
+      e.tagName = tag.toUpperCase();
+      e._tag = tag;
+      created.push(e);
+      return e;
+    },
+  };
+  doc.querySelector = (sel) => {
+    const id = sel.replace(/^#/, '');
+    if (!cache.has(id)) cache.set(id, fakeDomEl());
+    return cache.get(id);
+  };
+  doc._created = created;
+  return doc;
+}
+
+// ================= Moteur listener (30) =================
+
+function makeFakeRemoteTrack({ kind = 'audio', name = 'program-audio', sid = 'tr-1' } = {}) {
+  return {
+    kind, name, sid, source: 'microphone',
+    _attached: [], _detached: [],
+    attach(el) { this._attached.push(el); return el; },
+    detach(el) { this._detached.push(el); return el; },
+  };
+}
+function makeFakeAudioSink({ playMode = null } = {}) {
+  const calls = { attach: [], detach: 0, play: 0, pause: 0, volume: [], muted: [] };
+  let mode = playMode;
+  let vol = DEFAULT_VOLUME, mut = false;
+  return {
+    _calls: calls,
+    _vol: () => vol, _mut: () => mut,
+    _setPlayMode(m) { mode = m; },
+    attachTrack(t) { calls.attach.push(t); },
+    detachTrack() { calls.detach++; },
+    async play() {
+      calls.play++;
+      if (mode === 'NotAllowed') throw Object.assign(new Error('blocked'), { name: 'NotAllowedError' });
+      if (mode === 'other') throw new Error('play failed');
+    },
+    pause() { calls.pause++; },
+    setVolume(v) { calls.volume.push(v); vol = v; },
+    setMuted(b) { calls.muted.push(b); mut = b; },
+  };
+}
+function makeFakeListenerRoomClass({ connectFail = false } = {}) {
+  class FakeRoom {
+    constructor(opts) {
+      this.opts = opts; this._connected = false; this._disconnected = false;
+      this._listeners = {};
+      this.localParticipant = { _published: [], async publishTrack(t, o) { this._published.push({ t, o }); return { trackSid: 'no' }; } };
+      FakeRoom.lastInstance = this;
+    }
+    on(ev, cb) { (this._listeners[ev] = this._listeners[ev] || []).push(cb); }
+    off(ev) { delete this._listeners[ev]; }
+    removeAllListeners() { this._listeners = {}; }
+    _emit(ev, ...args) { (this._listeners[ev] || []).forEach((cb) => cb(...args)); }
+    async connect() { if (connectFail) throw new Error('connect failed'); this._connected = true; }
+    async disconnect() { this._disconnected = true; this._connected = false; }
+  }
+  FakeRoom.lastInstance = null;
+  return FakeRoom;
+}
+function makeFakeListenerTokenClient({ identity = 'listener-test', fail = false } = {}) {
+  const calls = [];
+  return {
+    _calls: calls,
+    async requestLiveKitToken({ role, password }) {
+      calls.push({ role, password });
+      if (fail) throw { code: 'token_unavailable', message: 'no' };
+      return { token: 'fake-jwt', url: 'wss://test.livekit.cloud', room: 'main', identity, role };
+    },
+  };
+}
+function makeListener({ tokenClient, RoomClass, audioSink, connectFail } = {}) {
+  return createLiveKitListener({
+    tokenClient: tokenClient || makeFakeListenerTokenClient(),
+    RoomClass: RoomClass || makeFakeListenerRoomClass({ connectFail }),
+    audioSink: audioSink || makeFakeAudioSink(),
+    now: () => 1000,
+  });
+}
+
+// 1. token listener demandé (rôle listener, pas de password)
+test('listener : token listener demandé (rôle listener, sans password)', async () => {
+  const tc = makeFakeListenerTokenClient();
+  const l = makeListener({ tokenClient: tc });
+  await l.connect();
+  assert.equal(tc._calls.length, 1);
+  assert.equal(tc._calls[0].role, 'listener');
+  assert.equal(tc._calls[0].password, undefined);
+  await l.destroy();
+});
+
+// 2. connexion Room
+test('listener : Room connectée après connect', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  assert.equal(Room.lastInstance._connected, true);
+  await l.destroy();
+});
+
+// 3. aucun publish appelé
+test('listener : aucun publishTrack appelé', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack(), {}, { identity: 'p' });
+  await flush();
+  assert.equal(Room.lastInstance.localParticipant._published.length, 0);
+  assert.equal(typeof l.publish, 'undefined');
+  await l.destroy();
+});
+
+// 4. état connected (snapshot.connected)
+test('listener : connected=true après connect', async () => {
+  const l = makeListener();
+  await l.connect();
+  assert.equal(l.getSnapshot().connected, true);
+  await l.destroy();
+});
+
+// 5. attente piste
+test('listener : état waiting_for_track après connect (sans piste)', async () => {
+  const l = makeListener();
+  await l.connect();
+  assert.equal(l.getState(), 'waiting_for_track');
+  await l.destroy();
+});
+
+// 6. piste audio reçue -> playing
+test('listener : piste audio reçue -> playing', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack({ sid: 'a' }), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getState(), 'playing');
+  assert.equal(l.getSnapshot().hasAudioTrack, true);
+  await l.destroy();
+});
+
+// 7. piste vidéo ignorée
+test('listener : piste vidéo ignorée', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack({ kind: 'video', sid: 'v' }), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getSnapshot().hasAudioTrack, false);
+  assert.equal(l.getState(), 'waiting_for_track');
+  await l.destroy();
+});
+
+// 8. program-audio prioritaire
+test('listener : piste program-audio prioritaire sur une autre piste', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack({ name: 'other', sid: 'a' }), {}, { identity: 'p' });
+  await flush();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack({ name: 'program-audio', sid: 'b' }), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getSnapshot().audioTrackSid, 'b');
+  await l.destroy();
+});
+
+// 9. deuxième piste (non program) ignorée
+test('listener : deuxième piste non-program ignorée', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack({ name: 'program-audio', sid: 'a' }), {}, { identity: 'p' });
+  await flush();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack({ name: 'other', sid: 'b' }), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getSnapshot().audioTrackSid, 'a');
+  await l.destroy();
+});
+
+// 10. piste détachée à unsubscribe
+test('listener : piste détachée à TrackUnsubscribed', async () => {
+  const sink = makeFakeAudioSink();
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room, audioSink: sink });
+  await l.connect();
+  const t = makeFakeRemoteTrack({ sid: 'a' });
+  Room.lastInstance._emit('trackSubscribed', t, {}, { identity: 'p' });
+  await flush();
+  Room.lastInstance._emit('trackUnsubscribed', t);
+  await flush();
+  assert.equal(l.getSnapshot().hasAudioTrack, false);
+  assert.ok(sink._calls.detach >= 1);
+  assert.equal(l.getState(), 'waiting_for_track');
+  await l.destroy();
+});
+
+// 11. participant performer identifié
+test('listener : performer identity identifié', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack(), {}, { identity: 'performer-x' });
+  await flush();
+  assert.equal(l.getSnapshot().performerIdentity, 'performer-x');
+  await l.destroy();
+});
+
+// 12. autoplay bloqué -> waiting_for_user + autoplayBlocked
+test('listener : autoplay bloqué -> waiting_for_user', async () => {
+  const sink = makeFakeAudioSink({ playMode: 'NotAllowed' });
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room, audioSink: sink });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack(), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getState(), 'waiting_for_user');
+  assert.equal(l.getSnapshot().autoplayBlocked, true);
+  await l.destroy();
+});
+
+// 13. waiting_for_user
+test('listener : état waiting_for_user confirmé', async () => {
+  const sink = makeFakeAudioSink({ playMode: 'NotAllowed' });
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room, audioSink: sink });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack(), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getState(), 'waiting_for_user');
+  await l.destroy();
+});
+
+// 14. startAudio succès
+test('listener : startAudio succès -> playing', async () => {
+  const sink = makeFakeAudioSink({ playMode: 'NotAllowed' });
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room, audioSink: sink });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack(), {}, { identity: 'p' });
+  await flush();
+  sink._setPlayMode(null); // l'utilisateur débloque -> play réussit
+  await l.startAudio();
+  assert.equal(l.getState(), 'playing');
+  assert.equal(l.getSnapshot().autoplayBlocked, false);
+  await l.destroy();
+});
+
+// 15. état playing
+test('listener : état playing', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack(), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getState(), 'playing');
+  assert.ok(l.getSnapshot().playingSince != null);
+  await l.destroy();
+});
+
+// 16. volume borné à 0
+test('listener : volume borné à 0', () => {
+  const l = makeListener();
+  assert.equal(l.setVolume(-1), 0);
+  assert.equal(l.getSnapshot().volume, 0);
+});
+
+// 17. volume borné à 1
+test('listener : volume borné à 1', () => {
+  const l = makeListener();
+  assert.equal(l.setVolume(2), 1);
+  assert.equal(l.getSnapshot().volume, 1);
+});
+
+// 18. mute
+test('listener : mute', () => {
+  const sink = makeFakeAudioSink();
+  const l = makeListener({ audioSink: sink });
+  l.setMuted(true);
+  assert.equal(l.getSnapshot().muted, true);
+  assert.equal(sink._calls.muted[sink._calls.muted.length - 1], true);
+});
+
+// 19. unmute
+test('listener : unmute', () => {
+  const sink = makeFakeAudioSink();
+  const l = makeListener({ audioSink: sink });
+  l.setMuted(true);
+  l.setMuted(false);
+  assert.equal(l.getSnapshot().muted, false);
+});
+
+// 20. reconnecting
+test('listener : Reconnecting -> reconnecting + compteur', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('reconnecting');
+  assert.equal(l.getState(), 'reconnecting');
+  assert.equal(l.getSnapshot().reconnectCount, 1);
+  await l.destroy();
+});
+
+// 21. reconnected -> playing (piste toujours active)
+test('listener : Reconnected -> playing', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack(), {}, { identity: 'p' });
+  await flush();
+  Room.lastInstance._emit('reconnecting');
+  Room.lastInstance._emit('reconnected');
+  assert.equal(l.getState(), 'playing');
+  await l.destroy();
+});
+
+// 22. disconnect involontaire -> error
+test('listener : Disconnected involontaire -> error', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('disconnected');
+  assert.equal(l.getState(), 'error');
+  assert.equal(l.getSnapshot().lastError.code, LISTENER_ERRORS.disconnected);
+  await l.destroy();
+});
+
+// 23. disconnect volontaire -> stopped
+test('listener : stop volontaire -> stopped + Room déconnectée', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  const inst = Room.lastInstance;
+  await l.stop();
+  assert.equal(l.getState(), 'stopped');
+  assert.equal(inst._disconnected, true);
+});
+
+// 24. destroy idempotent
+test('listener : destroy idempotent', async () => {
+  const l = makeListener();
+  await l.connect();
+  await l.destroy();
+  await l.destroy();
+  assert.equal(l.getState(), 'stopped');
+});
+
+// 25. snapshot sans token
+test('listener : snapshot sans token', async () => {
+  const l = makeListener();
+  await l.connect();
+  assert.equal(l.getSnapshot().token, undefined);
+  await l.destroy();
+});
+
+// 26. snapshot sans objet Room
+test('listener : snapshot sans objet Room', async () => {
+  const l = makeListener();
+  await l.connect();
+  const s = l.getSnapshot();
+  assert.equal(s.room, undefined);
+  assert.equal(s.Room, undefined);
+  await l.destroy();
+});
+
+// 27. performer absent non erreur
+test('listener : performer absent -> attente, pas d erreur', async () => {
+  const l = makeListener();
+  await l.connect();
+  assert.equal(l.getState(), 'waiting_for_track');
+  assert.equal(l.getSnapshot().lastError, null);
+  assert.equal(l.getSnapshot().hasAudioTrack, false);
+  await l.destroy();
+});
+
+// 28. piste arrivée après connexion
+test('listener : piste arrivée après connexion', async () => {
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room });
+  await l.connect();
+  assert.equal(l.getSnapshot().hasAudioTrack, false);
+  Room.lastInstance._emit('trackSubscribed', makeFakeRemoteTrack({ sid: 'late' }), {}, { identity: 'p' });
+  await flush();
+  assert.equal(l.getSnapshot().hasAudioTrack, true);
+  assert.equal(l.getSnapshot().audioTrackSid, 'late');
+  await l.destroy();
+});
+
+// 29. retry après erreur
+test('listener : retry après erreur -> reconnecte', async () => {
+  const tc = makeFakeListenerTokenClient();
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ tokenClient: tc, RoomClass: Room });
+  await l.connect();
+  Room.lastInstance._emit('disconnected');
+  assert.equal(l.getState(), 'error');
+  await l.connect();
+  assert.equal(l.getState(), 'waiting_for_track');
+  assert.equal(tc._calls.length, 2); // 2 tokens demandés (retry)
+  await l.destroy();
+});
+
+// 30. aucun getUserMedia appelé (aucune capture micro côté listener)
+test('listener : aucun getUserMedia / capture micro', async () => {
+  const sink = makeFakeAudioSink();
+  const Room = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass: Room, audioSink: sink });
+  await l.connect();
+  assert.equal(sink._calls.attach.length, 0); // aucune piste attachée sans TrackSubscribed
+  assert.equal(typeof l.getUserMedia, 'undefined');
+  await l.destroy();
+});
+
+// ================= Adaptateur audio element (12) =================
+
+function fakeAudioEl({ playImpl = async () => {} } = {}) {
+  const el = {
+    tagName: 'AUDIO', _volume: 1, _muted: false, _srcObject: null,
+    _paused: true, _removed: false, _playImpl: playImpl,
+    parentNode: null,
+    get volume() { return this._volume; }, set volume(v) { this._volume = v; },
+    get muted() { return this._muted; }, set muted(v) { this._muted = v; },
+    get srcObject() { return this._srcObject; }, set srcObject(v) { this._srcObject = v; },
+    async play() { await this._playImpl(); this._paused = false; },
+    pause() { this._paused = true; },
+  };
+  el.parentNode = { removeChild(x) { x._removed = true; } };
+  return el;
+}
+
+// 1. création audio element
+test('listenerAudioElement : crée un élément audio', () => {
+  const created = [];
+  const doc = { createElement(t) { const e = fakeAudioEl(); created.push(e); return e; } };
+  const a = createListenerAudioElement({ documentRef: doc });
+  assert.equal(a.getSnapshot().hasElement, true);
+  assert.equal(a.getSnapshot().ownsElement, true);
+  assert.equal(created.length, 1);
+});
+
+// 2. autoplay contrôlé (pas de play à la construction)
+test('listenerAudioElement : pas de play() à la construction', () => {
+  let played = 0;
+  const doc = { createElement: () => fakeAudioEl({ playImpl: async () => { played++; } }) };
+  const a = createListenerAudioElement({ documentRef: doc });
+  assert.equal(played, 0);
+  assert.equal(a.getSnapshot().playing, false);
+});
+
+// 3. attachTrack
+test('listenerAudioElement : attachTrack attache la piste', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  const t = makeFakeRemoteTrack();
+  a.attachTrack(t);
+  assert.equal(t._attached.length, 1);
+  assert.equal(a.getSnapshot().attached, true);
+});
+
+// 4. detachTrack
+test('listenerAudioElement : detachTrack détache + vide srcObject', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  const t = makeFakeRemoteTrack();
+  a.attachTrack(t);
+  a.detachTrack();
+  assert.equal(t._detached.length, 1);
+  assert.equal(el.srcObject, null);
+  assert.equal(a.getSnapshot().attached, false);
+});
+
+// 5. play succès
+test('listenerAudioElement : play succès -> playing', async () => {
+  const el = fakeAudioEl({ playImpl: async () => {} });
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  await a.play();
+  assert.equal(a.getSnapshot().playing, true);
+});
+
+// 6. play NotAllowedError propagé
+test('listenerAudioElement : play NotAllowedError propagé', async () => {
+  const el = fakeAudioEl({ playImpl: async () => { throw Object.assign(new Error('b'), { name: 'NotAllowedError' }); } });
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  await assert.rejects(() => a.play(), (e) => e.name === 'NotAllowedError');
+});
+
+// 7. volume
+test('listenerAudioElement : setVolume', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  a.setVolume(0.3);
+  assert.equal(el.volume, 0.3);
+});
+
+// 8. mute
+test('listenerAudioElement : setMuted', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  a.setMuted(true);
+  assert.equal(el.muted, true);
+});
+
+// 9. pause
+test('listenerAudioElement : pause', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  a.pause();
+  assert.equal(el._paused, true);
+  assert.equal(a.getSnapshot().playing, false);
+});
+
+// 10. destroy (pause + detach)
+test('listenerAudioElement : destroy pause + détache', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el }, audioElement: el });
+  const t = makeFakeRemoteTrack();
+  a.attachTrack(t);
+  a.destroy();
+  assert.equal(t._detached.length, 1);
+  assert.equal(a.getSnapshot().attached, false);
+});
+
+// 11. retrait si propriétaire (élément créé)
+test('listenerAudioElement : retire l élément créé du DOM', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => el } });
+  a.destroy();
+  assert.equal(el._removed, true);
+});
+
+// 12. conservation si élément fourni (ne retire pas)
+test('listenerAudioElement : conserve l élément fourni (pas de retrait)', () => {
+  const el = fakeAudioEl();
+  const a = createListenerAudioElement({ documentRef: { createElement: () => fakeAudioEl() }, audioElement: el });
+  assert.equal(a.getSnapshot().ownsElement, false);
+  a.destroy();
+  assert.equal(el._removed, false);
+});
+
+// ================= UI publique (11) =================
+
+// 1. section masquée si VITE_LIVEKIT_ENABLED=false
+test('listenerUI : isLiveKitEnabled("false") -> false', () => {
+  assert.equal(isLiveKitEnabled('false'), false);
+});
+
+// 2. absent / vide -> false (aucun import LiveKit)
+test('listenerUI : isLiveKitEnabled absent/vide -> false', () => {
+  assert.equal(isLiveKitEnabled(undefined), false);
+  assert.equal(isLiveKitEnabled(''), false);
+  assert.equal(isLiveKitEnabled(null), false);
+});
+
+// 2b. valeur inconnue -> false + warning
+test('listenerUI : isLiveKitEnabled valeur inconnue -> false', () => {
+  const orig = console.warn; let warned = false; console.warn = () => { warned = true; };
+  try { assert.equal(isLiveKitEnabled('maybe'), false); }
+  finally { console.warn = orig; }
+  assert.equal(warned, true);
+});
+
+// 3. bouton visible si activé (état idle -> primary visible)
+test('listenerUI : bouton principal visible à l état idle', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'idle', volume: 0.8, muted: false, hasAudioTrack: false }, els);
+  assert.equal(els.primary.hidden, false);
+  assert.equal(els.primary.textContent, 'ÉCOUTER LE DIRECT');
+});
+
+// 4. premier clic déclenche la connexion (onPrimary appelé)
+test('listenerUI : premier clic appelle onPrimary', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  let called = 0;
+  wireListenerControls({ els, onPrimary: () => { called++; }, onMuteToggle: () => {}, onVolume: () => {} });
+  els.primary._fire('click');
+  assert.equal(called, 1);
+});
+
+// 5. statut en attente
+test('listenerUI : statut "En attente du direct"', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'waiting_for_track', volume: 0.8, muted: false, hasAudioTrack: false }, els);
+  assert.equal(els.status.textContent, 'En attente du direct');
+});
+
+// 6. statut lecture
+test('listenerUI : statut "Lecture en cours"', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.8, muted: false, hasAudioTrack: true }, els);
+  assert.equal(els.status.textContent, 'Lecture en cours');
+});
+
+// 7. bouton mute (COUPER / RÉACTIVER)
+test('listenerUI : bouton mute COUPER puis RÉACTIVER', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.8, muted: false, hasAudioTrack: true }, els);
+  assert.equal(els.mute.hidden, false);
+  assert.equal(els.mute.textContent, 'COUPER');
+  renderListenerState({ state: 'playing', volume: 0.8, muted: true, hasAudioTrack: true }, els);
+  assert.equal(els.mute.textContent, 'RÉACTIVER');
+});
+
+// 8. volume (slider + pourcentage)
+test('listenerUI : volume slider + pourcentage', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.5, muted: false, hasAudioTrack: true }, els);
+  assert.equal(els.volume.value, '0.5');
+  assert.equal(els.volumeLabel.textContent, '50%');
+});
+
+// 8b. volume input déclenche onVolume
+test('listenerUI : volume input appelle onVolume', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  let v = null;
+  wireListenerControls({ els, onPrimary: () => {}, onMuteToggle: () => {}, onVolume: (x) => { v = x; } });
+  els.volume.value = '0.25';
+  els.volume._fire('input');
+  assert.equal(v, 0.25);
+});
+
+// 9. erreur + retry (bouton RÉESSAYER)
+test('listenerUI : erreur -> statut Erreur audio + RÉESSAYER', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'error', volume: 0.8, muted: false, hasAudioTrack: false, lastError: { code: 'disconnected' } }, els);
+  assert.equal(els.status.textContent, 'Erreur audio');
+  assert.equal(els.primary.hidden, false);
+  assert.equal(els.primary.textContent, 'RÉESSAYER');
+});
+
+// 10. section indépendante (carte séparée, n interfère pas avec Collab-Hub)
+test('listenerUI : section est une carte séparée lk-listener', () => {
+  const doc = fakeDocument();
+  const { section } = buildListenerDOM(doc, null);
+  assert.ok(section.className.includes('lk-listener'));
+  assert.equal(section.getAttribute('data-lk-section'), ''); // attribut présent (vide)
+});
+
+// 11. diagnostic existant continue + extension LiveKit
+test('listenerUI : diagnostic panel + extension LiveKit (refreshLivekit)', () => {
+  // diagnosticPanel utilise le `document` global pour createElement (liste des
+  // headers) -> on stubbe globalThis.document le temps du test.
+  const root = fakeDocument();
+  const origDoc = globalThis.document;
+  globalThis.document = fakeDocument();
+  try {
+    const fakeSocket = { id: 'sock-1', on() {}, onAny() {}, offAny() {}, emit() {} };
+    const api = {
+      socket: fakeSocket,
+      observeHeaderOnce() {}, observeKnownHeadersOnce() {}, isObserved: () => true, forget() {},
+    };
+    const diag = initDiagnostic(api, root, {
+      livekitDiag: () => ({ enabled: true, snapshot: { state: 'playing', roomName: 'main', identity: 'listener-1', participantCount: 2, audioTrackSid: 'tr-9', performerIdentity: 'performer-1', volume: 0.6, muted: false, autoplayBlocked: false, reconnectCount: 1, lastError: null } }),
+    });
+    diag.refreshLivekit();
+    assert.equal(root.querySelector('diag-lk-enabled').textContent, 'oui');
+    assert.equal(root.querySelector('diag-lk-state').textContent, 'playing');
+    assert.equal(root.querySelector('diag-lk-room').textContent, 'main');
+    assert.equal(root.querySelector('diag-lk-participants').textContent, '2');
+    assert.equal(root.querySelector('diag-lk-track').textContent, 'tr-9');
+    assert.equal(root.querySelector('diag-lk-performer').textContent, 'performer-1');
+    assert.equal(root.querySelector('diag-lk-volume').textContent, '60%');
+    assert.equal(root.querySelector('diag-lk-reconnects').textContent, '1');
+    // Le diagnostic existant (Connexion) fonctionne toujours.
+    diag.setStatus('connected');
+    assert.equal(root.querySelector('diag-conn-state').textContent, 'connecté');
+  } finally {
+    globalThis.document = origDoc;
+  }
+});

@@ -8,12 +8,17 @@ import { renderField, flashElement, fieldElementKey } from './ui/renderSoundInfo
 import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
 import { loadSoundState, saveSoundState, clearSoundState } from './state/persist.js';
 import { createFreshnessState, computePublicStatus } from './state/freshness.js';
+import { isLiveKitEnabled } from './listener/listenerUI.js';
 
 // --- Configuration (centralisée via env) ---
 const SERVER_URL = (import.meta.env.VITE_COLLAB_HUB_URL || 'https://server.collab-hub.io').replace(/\/+$/, '');
 const NAMESPACE = (import.meta.env.VITE_COLLAB_HUB_NAMESPACE ?? '').replace(/^\/+|\/+$/g, '');
 const AUTH_MODE = import.meta.env.VITE_COLLAB_HUB_AUTH_MODE;
 const USERNAME = `CH-Web_${Math.floor(Math.random() * 1000)}`;
+// Lot 4D : section d'écoute LiveKit. true -> active ; false/absent -> masquée ;
+// valeur inconnue -> false + warning (isLiveKitEnabled). L'import du SDK LiveKit
+// est dynamique et gate par ce flag -> aucun chargement si désactivé.
+const LIVEKIT_ENABLED = isLiveKitEnabled(import.meta.env.VITE_LIVEKIT_ENABLED);
 
 // --- Refs DOM ---
 const els = {
@@ -53,6 +58,7 @@ let lastPublicStatus = null; // évite les écritures DOM redondantes
 let lastFresh = null;
 
 let diagApi = null; // panneau ?debug=1 (absent en mode public)
+let listenerApi = null; // section d'écoute LiveKit (Lot 4D, absente si désactivée)
 
 // Recalcule l'UI publique : libellé de statut (Max actif/silencieux) + attribut
 // data-content-fresh. Écritures DOM gardées (uniquement si changement).
@@ -76,7 +82,10 @@ function recomputePublicState() {
 // Évite les multiples setInterval : un seul, maîtrisé.
 setInterval(() => {
   recomputePublicState();
-  if (diagApi) diagApi.refreshFreshness(freshness);
+  if (diagApi) {
+    diagApi.refreshFreshness(freshness);
+    if (diagApi.refreshLivekit) diagApi.refreshLivekit();
+  }
 }, 1000);
 
 // --- Routage d'un événement control ---
@@ -122,12 +131,25 @@ connectCollabHub({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNA
           initialRestore: lastLocalRestore,
           initialSaved: lastSavedAt,
           clear: () => { const ok = clearSoundState(localStorage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
+          // Lot 4D : fournisseur de diagnostic LiveKit (l snapshot listener lu au
+          // refresh, jamais de token/secret).
+          livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listenerApi ? listenerApi.getSnapshot() : null }),
         });
         diagApi.refreshFreshness(freshness);
       });
     }
   })
   .catch((err) => console.error('[Collab-Hub] connexion impossible :', err));
+
+// --- Section d'écoute LiveKit (Lot 4D) ---
+// Import dynamique gate par VITE_LIVEKIT_ENABLED : le SDK livekit-client n'est
+// chargé que si la fonctionnalité est active. Connexion au premier clic
+// utilisateur (aucune connexion auto au chargement).
+if (LIVEKIT_ENABLED) {
+  import('./listener/listenerSection.js')
+    .then(({ mountListenerSection }) => { listenerApi = mountListenerSection({ mountAfter: els.card }); })
+    .catch((e) => console.error('[LiveKit] section listener indisponible :', e));
+}
 
 // Première passe de fraîcheur (le contenu restauré peut déjà être ancien).
 recomputePublicState();

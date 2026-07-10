@@ -175,3 +175,57 @@ main.card[data-content-fresh="false"] .block {
 #diag-header-list div { display: flex; align-items: center; gap: 4px; background: #1a1f25; padding: 3px 6px; border-radius: 4px; }
 #diag-header-list code { color: var(--accent); }
 #diag-ctrl-count { color: var(--accent-soft); }
+
+/* ---------- Section d'écoute LiveKit (Lot 4D) ----------
+   Additive, sobre : reutilise .card / .block et les variables existantes.
+   Pas de dashboard supplémentaire ; le contenu Collab-Hub reste prioritaire. */
+.lk-listener { margin-top: 4px; }
+.lk-title {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.lk-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.lk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.lk-controls button {
+  font-family: var(--font);
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  background: var(--bg-block-2);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+.lk-controls button:hover { border-color: var(--accent); }
+.lk-controls button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lk-controls button[hidden] { display: none; }
+.lk-volume {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.lk-volume[hidden] { display: none; }
+.lk-volume input[type="range"] { accent-color: var(--accent); }
+#lk-volume-label { min-width: 3em; }

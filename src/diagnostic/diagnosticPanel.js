@@ -28,6 +28,21 @@ export function initDiagnostic(api, root, persistence = {}) {
   const clearLocalBtn = el(root, 'diag-clear-local');
   const clearStatusEl = el(root, 'diag-clear-status');
 
+  // --- LiveKit listener (Lot 4D) : spans optionnels (présents si ?debug=1) ---
+  const lkEnabled = el(root, 'diag-lk-enabled');
+  const lkState = el(root, 'diag-lk-state');
+  const lkRoom = el(root, 'diag-lk-room');
+  const lkIdentity = el(root, 'diag-lk-identity');
+  const lkParticipants = el(root, 'diag-lk-participants');
+  const lkTrack = el(root, 'diag-lk-track');
+  const lkPerformer = el(root, 'diag-lk-performer');
+  const lkVolume = el(root, 'diag-lk-volume');
+  const lkMuted = el(root, 'diag-lk-muted');
+  const lkAutoplay = el(root, 'diag-lk-autoplay');
+  const lkReconnects = el(root, 'diag-lk-reconnects');
+  const lkError = el(root, 'diag-lk-error');
+  const livekitDiag = typeof persistence.livekitDiag === 'function' ? persistence.livekitDiag : null;
+
   let onAnyEnabled = onanyToggle.checked;
   let controlCount = 0;
 
@@ -101,6 +116,27 @@ export function initDiagnostic(api, root, persistence = {}) {
     if (contentStateEl) contentStateEl.textContent = freshness.isContentFresh() ? 'récent' : 'ancien';
   }
 
+  // --- LiveKit listener (Lot 4D) : rafraîchi par le timer central (main.js) ---
+  // N'affiche JAMAIS de token/secret/mot de passe (le snapshot n'en contient pas).
+  function refreshLivekit() {
+    if (!livekitDiag) return;
+    let info = { enabled: false, snapshot: null };
+    try { info = livekitDiag() || info; } catch {}
+    const s = info.snapshot || {};
+    if (lkEnabled) lkEnabled.textContent = info.enabled ? 'oui' : 'non';
+    if (lkState) lkState.textContent = s.state || '—';
+    if (lkRoom) lkRoom.textContent = s.roomName || '—';
+    if (lkIdentity) lkIdentity.textContent = s.identity || '—';
+    if (lkParticipants) lkParticipants.textContent = s.participantCount != null ? String(s.participantCount) : '—';
+    if (lkTrack) lkTrack.textContent = s.audioTrackSid || '—';
+    if (lkPerformer) lkPerformer.textContent = s.performerIdentity || '—';
+    if (lkVolume) lkVolume.textContent = typeof s.volume === 'number' ? `${Math.round(s.volume * 100)}%` : '—';
+    if (lkMuted) lkMuted.textContent = s.muted ? 'oui' : 'non';
+    if (lkAutoplay) lkAutoplay.textContent = s.autoplayBlocked ? 'oui' : 'non';
+    if (lkReconnects) lkReconnects.textContent = s.reconnectCount != null ? String(s.reconnectCount) : '—';
+    if (lkError) lkError.textContent = (s.lastError && s.lastError.code) || '—';
+  }
+
   // --- Événements Collab-Hub connus (listeners uniques ; CH-ClientScript.js:546-709) ---
   ['serverMessage', 'myUsername', 'allUsers', 'otherUsers', 'availableControls',
    'observedControls', 'myControls', 'availableEvents', 'observedEvents', 'myEvents',
@@ -132,5 +168,6 @@ export function initDiagnostic(api, root, persistence = {}) {
   });
 
   recomputeObserveAll();
-  return { setStatus, logControl, setLocalSaved, setLocalRestore, refreshFreshness };
+  refreshLivekit();
+  return { setStatus, logControl, setLocalSaved, setLocalRestore, refreshFreshness, refreshLivekit };
 }
