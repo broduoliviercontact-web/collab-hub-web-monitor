@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.1] - 2026-07-11
+
+### Fixed
+- **Multi-listener** : un second listener rejoignant une room où le performer
+  diffuse déjà restait bloqué en `waiting_for_track` (aucun son, aucune erreur).
+  Cause racine : les publications audio déjà publiées au moment de `connect()`
+  n'étaient pas rattachées (`TrackSubscribed` peut se déclencher pendant la
+  résolution de `room.connect()`, avant le câblage effectif des handlers —
+  race). Après `room.connect()`, on inspecte désormais `room.remoteParticipants`
+  → `trackPublications` et on rattache toute piste audio déjà présente
+  (`attachExistingAudioTracks`, idempotent avec `TrackSubscribed` via
+  `selectProgramTrack`). `setState('waiting_for_track')` ne se déclenche que si
+  aucune piste n'a été rattachée.
+
+### Tests
+- 326 → 330 (+4) : 2e listener pendant qu'un performer publie déjà (sans
+  `TrackSubscribed`), `TrackSubscribed` tardif sans double rattachement,
+  participant déjà présent (`participants=0` attendu), aucun participant
+  (comportement inchangé). `npm run check` vert.
+
 ## [1.1.0] - 2026-07-10
 
 ### Added

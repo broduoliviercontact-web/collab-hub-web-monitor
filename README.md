@@ -4,16 +4,16 @@
 
 ## Release stable
 
-- **Version** : v1.0.1 (2026-07-10).
+- **Version** : v1.1.1 (2026-07-11) — « Live Audio Edition » (correctif multi-listener).
 - **Production** : https://collab-hub-web-monitor.vercel.app
-- **Release GitHub** : https://github.com/broduoliviercontact-web/collab-hub-web-monitor/releases/tag/v1.0.1
-- **ZIP Max téléchargeable** : `CollabHub-Web-Monitor-Max-v1.0.1.zip` (joint à
+- **Release GitHub** : https://github.com/broduoliviercontact-web/collab-hub-web-monitor/releases/tag/v1.1.1
+- **ZIP Max téléchargeable** : `CollabHub-Web-Monitor-v1.1.1.zip` (joint à
   la release) — contient le patch Max, le README-Max, le fichier `LICENSE` et
   `VERSION.txt`.
 - **Procédure rapide** : installer le client Collab-Hub Max → ouvrir le patch
   → connecter à `https://server.collab-hub.io` → remplir les 5 champs → cliquer
   **ENVOYER LES 5 CHAMPS** → ouvrir le site web → vérifier « Connecté — Max
-  actif ». Détails : `docs/release/v1.0.1.md` et `max/README.md`.
+  actif ». Détails : `docs/release/v1.1.1.md` et `max/README.md`.
 
 Page web publique affichant en temps réel le morceau en cours, pilotée depuis
 Max/MSP via Collab-Hub. Une fiche programme / cartouche éditoriale sobre, pas
@@ -394,18 +394,14 @@ Détails et configuration Vercel : `docs/bmad/10-livekit-token-and-publisher.md`
 
 **Statut release** : la couche audio est **activée en production**
 (`VITE_LIVEKIT_ENABLED=true`), route `/control-room` en ligne. L'édition
-**v1.1.0 « Live Audio Edition »** est **préparée** (bump version, docs, package,
-CI) avec validation **automatisée + HTTP production** verte et **aucun défaut
-de code observé**. Les **tests runtime physiques** (Ableton+BlackHole, écoute
-réelle, Chrome/Safari/mobile, reconnexion réseau, devicechange, qualité audio,
-**login/logout/expiration session Control Room**, **bouton enceinte + −20 dB**)
-restent **à valider manuellement** avant publication « latest stable » — voir la
-checklist GO/NO-GO dans `docs/bmad/13` et `docs/bmad/14`. La release stable
-actuelle reste **v1.0.1** tant que `v1.1.0` n'est pas taggée.
+**v1.1.x « Live Audio Edition »** est **publiée stable** (v1.1.1) avec validation
+**automatisée + runtime** verte (Chrome performer/listener, Safari listener,
+BlackHole/LiveKit, login/logout/session Control Room, bouton enceinte + −20 dB,
+multi-listener). Voir `docs/bmad/13`, `docs/bmad/14` et `docs/release/v1.1.1.md`.
 
-> **Lot 4F.1 — action requise [MANUEL]** : ajouter `CONTROL_ROOM_SESSION_SECRET`
+> **Lot 4F.1 — variable serveur requise** : `CONTROL_ROOM_SESSION_SECRET`
 > (secret de signature HMAC, jamais `VITE_`, distinct de toute autre variable)
-> dans Vercel **Production + Preview**, puis redéployer. Sans cette variable,
+> doit être configuré dans Vercel **Production + Preview**. Sans cette variable,
 > le login Control Room renvoie 503 et le token performer est refusé.
 
 ## Licence
