@@ -1,5 +1,73 @@
 # Changelog
 
+## [1.1.2] - 2026-07-11
+
+### Fixed
+- **Listener LiveKit robuste multi-client + iOS** : le bug runtime persistant
+  après v1.1.1 (listener connecté à `room main`, même `roomID`, mais état final
+  `waiting_for_track`, `participantCount=0`, `trackSid=null`, `performer=null`,
+  aucune erreur ; un autre listener pouvait parfois jouer correctement ; iOS ne
+  jouait pas) est corrigé à la racine.
+  - **Race `TrackSubscribed`** : `TrackSubscribed` peut se déclencher *pendant*
+    `await room.connect()`, avant que l'état ne passe à `connected`. Le garde
+    `if (destroyed || !isConnected) return;` rejetait l'évènement → piste perdue.
+    Le garde devient `if (destroyed || !room || userStopped) return;` (le
+    `!isConnected` est supprimé) : la piste est acceptée dès que la Room existe,
+    y compris pendant `connecting`. Reste idempotent via `selectProgramTrack`.
+  - **Réconciliation des participants existants** : nouvelle fonction pure
+    `reconcileRemoteParticipants()` (testable via `scanRemoteAudio(room)`)
+    appelée après `room.connect()`, `ParticipantConnected`, `TrackPublished`,
+    `TrackSubscriptionStatusChanged`, `Reconnected`, plus retry borné
+    `[100, 300, 750] ms` puis arrêt (pas de polling infini). Recalcule
+    `participantCount` depuis `room.remoteParticipants.size`, itère tous les
+    participants et leurs `audioTrackPublications`, priorise program-audio
+    (deux passes), attache `pub.track` si présent. Idempotent (pas de double
+    attach) ; anti-spam via un `Set` de `requestedSubscriptions`.
+  - **`setSubscribed(true)` explicite** : une publication audio avec
+    `track === null` (publiée mais non souscrite) déclenche `pub.setSubscribed(true)`
+    si la méthode existe, puis reste en attente de `TrackSubscribed`. Nouveaux
+    évènements injectables câblés : `TrackPublished`,
+    `TrackSubscriptionStatusChanged`, `AudioPlaybackStatusChanged`.
+  - **`participantCount` corrigé** : `participantCount =
+    room.remoteParticipants?.size ?? 0` après connexion et à chaque
+    réconciliation (pas seulement sur `ParticipantConnected`) — le diagnostic
+    reflète désormais les participants déjà présents.
+  - **iOS/Safari `room.startAudio()`** : `startAudio()` appelle
+    `room.startAudio()` (instance method de `livekit-client ^2.20.1`) dans le
+    geste utilisateur puis `audioSink.play()` ; si aucune piste n'est encore
+    là, `audioUnlocked=true` et l'attachement + replay se font au
+    `TrackSubscribed` suivant. Fallback **ACTIVER LE SON** : si Safari refuse
+    l'autoplay (`NotAllowedError`) → `waiting_for_user`, `autoplayBlocked=true`,
+    bouton dédié affiché ; second geste → `room.startAudio()` + `play()` →
+    `playing`.
+  - **Microtask ordering** : `attemptPlay` pouvait passer à `playing` pendant
+    `connect()` puis se faire écraser par la continuation de `connect()`
+    (`connected`). Garde `if (state === 'connecting') setState('connected');`
+    — on ne régresse pas un état déjà avancé.
+- **Diagnostics** (snapshot + panneau `?debug=1`, aucun token/secret) :
+  `audioUnlocked`, `roomCanPlaybackAudio`, `existingParticipants`,
+  `existingAudioPublications`, `subscribedAudioPublications`,
+  `reconciliationCount`, `lastTrackEvent`, `lastTrackPublishedAt`,
+  `lastTrackSubscribedAt`.
+
+### Tests
+- 330 → 350 (+20) : `scanRemoteAudio` (4) + F.1–F.15 couvrant les 12 cas
+  obligatoires (race `TrackSubscribed` pendant `connect()`, participant présent
+  avant connect, pub audio avec piste immédiate, pub `track=null` →
+  `setSubscribed(true)`, `TrackSubscribed` après réconciliation, 2 listeners
+  successifs, `Reconnected` relance la réconciliation, pas de double attach,
+  iOS `room.startAudio()` dans le geste, autoplay refusé → `waiting_for_user` +
+  bouton ACTIVER LE SON, second geste → `playing`, `participantCount` reflète
+  les `remoteParticipants` existants) + retry borné + anti-spam + snapshot sans
+  secret. `npm run check` vert.
+
+### Validation runtime
+- **3 listeners simultanés** sur réseaux différents (ordinateur Wi-Fi,
+  partage de connexion, iOS) : tous se connectent et entendent le stream.
+  Multi-listener OK, iOS OK, performer déjà ON AIR avant connexion OK, Track
+  SID reçu, participant performer détecté, pas de double audio, aucune erreur
+  bloquante.
+
 ## [1.1.1] - 2026-07-11
 
 ### Fixed

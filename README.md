@@ -4,16 +4,16 @@
 
 ## Release stable
 
-- **Version** : v1.1.1 (2026-07-11) — « Live Audio Edition » (correctif multi-listener).
+- **Version** : v1.1.2 (2026-07-11) — « Live Audio Edition » (correctif listener multi-client + iOS).
 - **Production** : https://collab-hub-web-monitor.vercel.app
-- **Release GitHub** : https://github.com/broduoliviercontact-web/collab-hub-web-monitor/releases/tag/v1.1.1
-- **ZIP Max téléchargeable** : `CollabHub-Web-Monitor-v1.1.1.zip` (joint à
+- **Release GitHub** : https://github.com/broduoliviercontact-web/collab-hub-web-monitor/releases/tag/v1.1.2
+- **ZIP Max téléchargeable** : `CollabHub-Web-Monitor-v1.1.2.zip` (joint à
   la release) — contient le patch Max, le README-Max, le fichier `LICENSE` et
   `VERSION.txt`.
 - **Procédure rapide** : installer le client Collab-Hub Max → ouvrir le patch
   → connecter à `https://server.collab-hub.io` → remplir les 5 champs → cliquer
   **ENVOYER LES 5 CHAMPS** → ouvrir le site web → vérifier « Connecté — Max
-  actif ». Détails : `docs/release/v1.1.1.md` et `max/README.md`.
+  actif ». Détails : `docs/release/v1.1.2.md` et `max/README.md`.
 
 Page web publique affichant en temps réel le morceau en cours, pilotée depuis
 Max/MSP via Collab-Hub. Une fiche programme / cartouche éditoriale sobre, pas
@@ -394,10 +394,11 @@ Détails et configuration Vercel : `docs/bmad/10-livekit-token-and-publisher.md`
 
 **Statut release** : la couche audio est **activée en production**
 (`VITE_LIVEKIT_ENABLED=true`), route `/control-room` en ligne. L'édition
-**v1.1.x « Live Audio Edition »** est **publiée stable** (v1.1.1) avec validation
+**v1.1.x « Live Audio Edition »** est **publiée stable** (v1.1.2) avec validation
 **automatisée + runtime** verte (Chrome performer/listener, Safari listener,
 BlackHole/LiveKit, login/logout/session Control Room, bouton enceinte + −20 dB,
-multi-listener). Voir `docs/bmad/13`, `docs/bmad/14` et `docs/release/v1.1.1.md`.
+multi-listener 3 appareils / réseaux différents + iOS). Voir `docs/bmad/13`,
+`docs/bmad/14` et `docs/release/v1.1.2.md`.
 
 > **Lot 4F.1 — variable serveur requise** : `CONTROL_ROOM_SESSION_SECRET`
 > (secret de signature HMAC, jamais `VITE_`, distinct de toute autre variable)
