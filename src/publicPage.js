@@ -14,6 +14,8 @@ import { createFreshnessState, computePublicStatus } from './state/freshness.js'
 import { createStreamStatus, routeStreamControl } from './state/streamStatus.js';
 import { renderStreamStatus, mountStreamCard } from './ui/streamStatusView.js';
 import { isLiveKitEnabled } from './listener/listenerUI.js';
+import { shouldMountPublicDebug } from './diagnostic/debugGate.js';
+import { buildRuntimeConfig } from './diagnostic/runtimeConfig.js';
 
 export function mountPublicPage() {
   // --- Configuration (centralisée via env) ---
@@ -25,8 +27,23 @@ export function mountPublicPage() {
   // valeur inconnue -> false + warning (isLiveKitEnabled). L'import du SDK LiveKit
   // est dynamique et gate par ce flag -> aucun chargement si désactivé.
   const LIVEKIT_ENABLED = isLiveKitEnabled(import.meta.env.VITE_LIVEKIT_ENABLED);
-  // Logs de debug utiles (hotfix Lot 4G) : uniquement sous ?debug=1, jamais en console normale.
-  const debug = new URLSearchParams(location.search).get('debug') === '1';
+  // Lot Ops Debug §1 : le panneau d'exploitation ne se monte QUE si ?debug=1 ET
+  // la variable build publique VITE_PUBLIC_DEBUG_ENABLED vaut exactement 'true'.
+  // En production (variable false) -> /?debug=1 monte AUCUN panneau (sécurité).
+  // Le debug Control Room est gated par session performer (contrôlé ailleurs).
+  const PUBLIC_DEBUG_ENABLED = import.meta.env.VITE_PUBLIC_DEBUG_ENABLED === 'true';
+  const debugParam = new URLSearchParams(location.search).get('debug');
+  const debug = shouldMountPublicDebug({ debugParam, publicDebugEnabled: PUBLIC_DEBUG_ENABLED });
+  // Infos de build injectées via vite `define` (vite.config.js). typeof garde le
+  // cas où le bloc define est absent (ex. tests hors build) -> null -> affiché « — ».
+  const buildInfo = {
+    version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null,
+    gitCommitSha: typeof __GIT_COMMIT_SHA__ !== 'undefined' ? __GIT_COMMIT_SHA__ : null,
+    buildTimestamp: typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : null,
+    vercelEnv: typeof __VERCEL_ENV__ !== 'undefined' ? __VERCEL_ENV__ : null,
+  };
+  const runtimeConfig = buildRuntimeConfig({ env: import.meta.env, build: buildInfo });
+  // Logs de debug utiles (hotfix Lot 4G) : uniquement sous debug gated, jamais en console normale.
   const dbg = (...a) => { if (debug) console.log('[CH public flux]', ...a); };
 
   // --- Refs DOM ---
@@ -182,12 +199,13 @@ export function mountPublicPage() {
     .then((api) => {
       collabApi = api;
       observeStreamHeaders(); // 1re connexion (si déjà connectée, guard idempotent)
-      if (new URLSearchParams(location.search).get('debug') === '1') {
+      if (debug) {
         const diag = document.getElementById('diagnostic');
         if (diag) import('./diagnostic/diagnosticPanel.js').then((m) => {
           diagApi = m.initDiagnostic(api, diag, {
             initialRestore: lastLocalRestore,
             initialSaved: lastSavedAt,
+            runtimeConfig,
             clear: () => { const ok = clearSoundState(localStorage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
             livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listenerApi ? listenerApi.getSnapshot() : null }),
             streamDiag: () => streamStatus ? {

@@ -176,6 +176,31 @@ main.card[data-content-fresh="false"] .block {
 #diag-header-list code { color: var(--accent); }
 #diag-ctrl-count { color: var(--accent-soft); }
 
+/* --- Lot Ops Debug : bandeau santé, tableau headers, export --- */
+.diag-health { border-color: var(--rule); }
+.diag-health-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px; font-size: 13px;
+}
+.diag-health-grid > div {
+  background: #1a1f25; padding: 6px 8px; border-radius: 4px;
+}
+.diag-health-global { font-weight: 600; }
+#diag-health[data-health="OPÉRATIONNEL"] { border-color: #2e7d32; }
+#diag-health[data-health="DÉGRADÉ"] { border-color: #b07d00; }
+#diag-health[data-health="ERREUR"] { border-color: #c62828; }
+.diag-export-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.diag-headers-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.diag-headers-table th, .diag-headers-table td {
+  border: 1px solid var(--rule); padding: 4px 6px; text-align: left;
+  vertical-align: top; word-break: break-word;
+}
+.diag-headers-table thead th { background: #1a1f25; color: var(--accent); }
+.diag-headers-table tbody tr[data-status="JAMAIS REÇU"],
+.diag-headers-table tbody tr[data-status="STALE"] { background: rgba(176, 125, 0, 0.12); }
+.diag-headers-table tbody tr[data-status="NON OBSERVÉ"] { opacity: 0.55; }
+#diag-log-total, #diag-log-kept { color: var(--accent); font-variant-numeric: tabular-nums; }
+
 /* ---------- Section d'écoute LiveKit (Lot 4D) ----------
    Additive, sobre : reutilise .card / .block et les variables existantes.
    Pas de dashboard supplémentaire ; le contenu Collab-Hub reste prioritaire. */

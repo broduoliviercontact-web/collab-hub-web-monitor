@@ -167,13 +167,38 @@ affiché.
 Logique dans `src/state/freshness.js` (pur, horloge injectable, testable en
 Node). Détails : `docs/bmad/06-heartbeat-and-freshness.md`.
 
-## Mode diagnostic
+## Mode diagnostic (panneau d'exploitation)
 
-`?debug=1` active un panneau de diagnostic (sans toucher à l'UI publique) :
-état de connexion, socket id, erreurs, événements reçus en JSON brut, compteur
-de contrôles, observation manuelle des 5 headers, toggle `onAny`. Ce panneau
-est un chunk JS séparé (chargé uniquement avec `?debug=1`). URL publique par
-défaut : aucun paramètre -> seulement les trois blocs + le statut.
+`?debug=1` active un panneau d'exploitation (sans toucher à l'UI publique). Il
+ne se monte QUE si `?debug=1` est présent **ET** la variable build publique
+`VITE_PUBLIC_DEBUG_ENABLED` vaut exactement `true` (`src/diagnostic/debugGate.js`).
+En production (`VITE_PUBLIC_DEBUG_ENABLED=false`, défaut) : `/?debug=1` monte
+**AUCUN** panneau. Sur les déploiements Preview/dev, mettre la variable à `true`
+dans Vercel pour activer. Le debug Control Room (`/control-room?debug=1`) est
+gated par session performer et n'est pas affecté par cette variable.
+
+Sections : bandeau santé (Collab-Hub / Max / LiveKit / Flux / Global), export
+diagnostic (copier / télécharger JSON / effacer les logs), connexion, version &
+configuration runtime, stats Collab-Hub (transport, reconnexions, raisons de
+déconnexion/dernier `connect_error`), persistance locale, fraîcheur, tableau
+des headers attendus (observé/reçu/compteur/dernière réception/âge/valeur brute
+résumée/statut), observation manuelle des 5 headers, dernier contrôle reçu
+(logs bornés), LiveKit listener, flux direct. Le panneau est un chunk JS séparé
+(chargé uniquement en mode debug gated).
+
+**Logs bornés** : les événements reçus sont stockés dans un ring buffer de 200
+entrées (`src/diagnostic/boundedEventLog.js`) — plus de croissance infinie du
+DOM. Compteurs « conservés / reçus » + bouton « Effacer les logs » (n'efface
+que les entrées, pas le total reçu). Détails : `docs/bmad/17-ops-debug-panel.md`.
+
+**Sécurité** : aucune route debug n'affiche de token, cookie, mot de passe,
+secret, API key, ou identity/SID complète d'auditeur. Les identity et SID
+d'auditeur sont masqués (`redactIdentity`) dans le DOM ; l'identity performer
+(non personnelle, utile à l'exploitation) est conservée. L'export JSON passe
+par un sanitizer récursif (`src/diagnostic/diagnosticSanitizer.js`) qui retire
+`token`/`access_token`/`authorization`/`password`/`secret`/`api_key`/`cookie`
+et masque les identity/SID. Aucune métrique réseau inventée : WebRTC stats
+renvoient `unsupported` tant qu'aucune implémentation fiable n'est branchée.
 
 Le bouton « Observer les 5 champs » est **idempotent** : il s'active tant que
 les 5 headers ne sont pas abonnés pour le socket courant, puis affiche
@@ -353,8 +378,10 @@ contenu restauré ancien, serveur prioritaire, horloge injectable). Voir
   — on évite seulement d'en créer de nouvelles via l'observation idempotente
   (`src/collabHub/observeGuard.js`). Un nouvel onglet crée légitimement un
   nouvel observer (username différent).
-- Le diagnostic `?debug=1` est accessible à quiconque connaît l'URL (sans
-  login) — acceptable pour un outil de spike, à retirer/protéger en production.
+- Le diagnostic `?debug=1` est **désactivé par défaut en production**
+  (`VITE_PUBLIC_DEBUG_ENABLED=false`). Il ne se monte que sur les déploiements
+  où la variable vaut exactement `true` (Preview/dev). Aucun token/cookie/secret/
+  identity complète n'y est exposé (voir « Mode diagnostic » ci-dessus).
 
 ## Moteur audio LiveKit (en développement)
 
