@@ -44,6 +44,11 @@ export function mountListenerSection({ mountAfter } = {}) {
       try { await listener.startAudio(); } catch {}
     }
   }
+  // Hotfix iOS/Safari : second geste utilisateur explicite ("ACTIVER LE SON")
+  // -> room.startAudio() + audioSink.play() dans le geste (requis sur iOS).
+  async function onActivate() {
+    try { await listener.startAudio(); } catch {}
+  }
   function onMuteToggle() {
     const snap = listener.getSnapshot();
     listener.setMuted(!snap.muted);
@@ -52,7 +57,7 @@ export function mountListenerSection({ mountAfter } = {}) {
   function onAttenuationToggle() { listener.toggleAttenuation(); }
   function onVolume(v) { listener.setVolume(v); }
 
-  wireListenerControls({ els, onPrimary, onMuteToggle, onAttenuationToggle, onVolume });
+  wireListenerControls({ els, onPrimary, onActivate, onMuteToggle, onAttenuationToggle, onVolume });
 
   // Nettoyage non bloquant au déchargement (§15) : pas de fetch supplémentaire,
   // pas de log de token.

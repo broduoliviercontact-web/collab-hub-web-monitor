@@ -25,6 +25,11 @@ export const roomEvents = {
   Reconnecting: RoomEvent.Reconnecting,
   Reconnected: RoomEvent.Reconnected,
   Disconnected: RoomEvent.Disconnected,
+  // Hotfix multi-listener / iOS : réagir à une publication distante (pas
+  // encore souscrite) et re-réconcilier après changement de souscription.
+  TrackPublished: RoomEvent.TrackPublished,
+  TrackSubscriptionStatusChanged: RoomEvent.TrackSubscriptionStatusChanged,
+  AudioPlaybackStatusChanged: RoomEvent.AudioPlaybackStatusChanged,
 };
 
 // trackKinds : Track.Kind (audio/video) consommé par le moteur.

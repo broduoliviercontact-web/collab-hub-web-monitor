@@ -1607,7 +1607,7 @@ test('publisher : snapshot sans password', async () => {
 });
 // Lot 4D — moteur listener LiveKit + adaptateur audio + UI publique
 // ============================================================
-import { createLiveKitListener, LISTENER_ERRORS, DEFAULT_VOLUME, ATTENUATION_DB, ATTENUATION_GAIN } from '../src/livekit/livekitListener.js';
+import { createLiveKitListener, LISTENER_ERRORS, DEFAULT_VOLUME, ATTENUATION_DB, ATTENUATION_GAIN, scanRemoteAudio, DEFAULT_RETRY_DELAYS } from '../src/livekit/livekitListener.js';
 import { createListenerAudioElement } from '../src/listener/listenerAudioElement.js';
 import {
   isLiveKitEnabled, STATUS_LABELS, buildListenerDOM,
@@ -1761,12 +1761,13 @@ function makeFakeListenerTokenClient({ identity = 'listener-test', fail = false 
     },
   };
 }
-function makeListener({ tokenClient, RoomClass, audioSink, connectFail } = {}) {
+function makeListener({ tokenClient, RoomClass, audioSink, connectFail, ...rest } = {}) {
   return createLiveKitListener({
     tokenClient: tokenClient || makeFakeListenerTokenClient(),
     RoomClass: RoomClass || makeFakeListenerRoomClass({ connectFail }),
     audioSink: audioSink || makeFakeAudioSink(),
     now: () => 1000,
+    ...rest,
   });
 }
 
@@ -3709,13 +3710,15 @@ test('listener4F2 : TrackSubscribed tardif + piste existante -> pas de double ra
   l.destroy();
 });
 
-// 3. Aucun participant déjà présent ne déclenche ParticipantConnected -> le
-//    compteur reste 0 (attendu), mais la piste est bien rattachée.
-test('listener4F2 : participant déjà présent -> participants=0 mais piste rattachée', async () => {
+// 3. Participant déjà présent AVANT connect : le compteur reflète désormais
+//    remoteParticipants (hotfix D) -> participantCount=1 (et piste rattachée).
+//    Avant le hotfix, le compteur restait à 0 (ParticipantConnected ne se
+//    déclenche pas pour les participants déjà présents) -> diagnostic trompeur.
+test('listener4F2 : participant déjà présent -> participants=1 (hotfix D) + piste rattachée', async () => {
   const RoomClass = makeFakeListenerRoomWithExistingTrack({});
   const l = makeListener({ RoomClass });
   const snap = await l.connect();
-  assert.equal(snap.participantCount, 0, 'ParticipantConnected ne se déclenche pas pour les participants déjà présents');
+  assert.equal(snap.participantCount, 1, 'participantCount reflète remoteParticipants existants');
   assert.equal(snap.hasAudioTrack, true);
   l.destroy();
 });
@@ -3727,5 +3730,388 @@ test('listener4F2 : aucun participant -> waiting_for_track (inchangé)', async (
   const snap = await l.connect();
   assert.equal(snap.hasAudioTrack, false);
   assert.equal(snap.state, 'waiting_for_track');
+  l.destroy();
+});
+
+// ================= Tests hotfix multi-listener / iOS (réconciliation + iOS) ====
+
+// Fake timer pour tester le retry borné sans attendre réellement.
+function fakeListenerTimer() {
+  const jobs = [];
+  let nextId = 1;
+  return {
+    setTimeout(cb) { const id = nextId++; jobs.push({ id, cb }); return id; },
+    clearTimeout(id) { const i = jobs.findIndex((j) => j.id === id); if (i >= 0) jobs.splice(i, 1); },
+    _flush() { const all = jobs.splice(0); all.forEach((j) => j.cb()); },
+    _count() { return jobs.length; },
+  };
+}
+
+// Fake Room qui émet TrackSubscribed PENDANT connect() (avant résolution), pour
+// tester le garde du hotfix A : à cet instant isConnected est encore false, la
+// piste ne doit PAS être perdue.
+function makeFakeListenerRoomEmitDuringConnect({
+  trackName = 'program-audio', participantIdentity = 'performer-A', trackSid = 'tr-perf',
+  withStartAudio = false,
+} = {}) {
+  const track = { kind: 'audio', name: trackName, sid: trackSid, source: 'microphone' };
+  class FakeRoom {
+    constructor(opts) {
+      this.opts = opts; this._connected = false; this._listeners = {};
+      this.remoteParticipants = new Map();
+      this.startAudioCalled = false;
+      if (withStartAudio) this.startAudio = async () => { this.startAudioCalled = true; };
+      FakeRoom.lastInstance = this;
+    }
+    on(ev, cb) { (this._listeners[ev] = this._listeners[ev] || []).push(cb); }
+    off(ev) { delete this._listeners[ev]; }
+    removeAllListeners() { this._listeners = {}; }
+    _emit(ev, ...args) { (this._listeners[ev] || []).forEach((cb) => cb(...args)); }
+    async connect() {
+      // Émet TrackSubscribed PENDANT connect() (avant résolution).
+      this._emit('trackSubscribed', track, { kind: 'audio', name: trackName, trackSid, track }, { identity: participantIdentity });
+      this._connected = true;
+    }
+    async disconnect() { this._disconnected = true; this._connected = false; }
+  }
+  FakeRoom.lastInstance = null;
+  return FakeRoom;
+}
+
+// Fake Room avec une publication audio SOUSCRITE (track présent immédiatement),
+// remoteParticipants peuplé (pour participantCount) ; pub.setSubscribed dispo.
+function makeFakeListenerRoomSubscribedPub({
+  trackName = 'program-audio', participantIdentity = 'performer-A', trackSid = 'tr-perf',
+  withStartAudio = false,
+} = {}) {
+  const track = { kind: 'audio', name: trackName, sid: trackSid, source: 'microphone' };
+  const pub = {
+    kind: 'audio', name: trackName, trackSid, track,
+    _setSubscribedCalls: 0, setSubscribed(v) { this._setSubscribedCalls++; this._subscribed = !!v; },
+  };
+  class FakeRoom {
+    constructor(opts) {
+      this.opts = opts; this._connected = false; this._listeners = {};
+      const p = { identity: participantIdentity, trackPublications: new Map([[trackSid, pub]]) };
+      this.remoteParticipants = new Map([[participantIdentity, p]]);
+      this.startAudioCalled = false;
+      if (withStartAudio) this.startAudio = async () => { this.startAudioCalled = true; };
+      FakeRoom.lastInstance = this;
+    }
+    on(ev, cb) { (this._listeners[ev] = this._listeners[ev] || []).push(cb); }
+    off(ev) { delete this._listeners[ev]; }
+    removeAllListeners() { this._listeners = {}; }
+    _emit(ev, ...args) { (this._listeners[ev] || []).forEach((cb) => cb(...args)); }
+    async connect() { this._connected = true; }
+    async disconnect() { this._disconnected = true; this._connected = false; }
+  }
+  FakeRoom.lastInstance = null;
+  FakeRoom.pub = pub;
+  return FakeRoom;
+}
+
+// Fake Room avec une publication audio NON souscrite (track === null au
+// départ). pub.track ne devient la piste qu'après setSubscribed(true). Permet
+// de tester la souscription explicite (hotfix B) puis l'attache différée.
+function makeFakeListenerRoomUnsubscribedPub({
+  trackName = 'program-audio', participantIdentity = 'performer-A', trackSid = 'tr-perf',
+  withStartAudio = false,
+} = {}) {
+  const track = { kind: 'audio', name: trackName, sid: trackSid, source: 'microphone' };
+  let subscribed = false;
+  const pub = {
+    kind: 'audio', name: trackName, trackSid,
+    get track() { return subscribed ? track : null; },
+    _setSubscribedCalls: 0, setSubscribed(v) { this._setSubscribedCalls++; subscribed = !!v; },
+  };
+  class FakeRoom {
+    constructor(opts) {
+      this.opts = opts; this._connected = false; this._listeners = {};
+      const p = { identity: participantIdentity, trackPublications: new Map([[trackSid, pub]]) };
+      this.remoteParticipants = new Map([[participantIdentity, p]]);
+      this.startAudioCalled = false;
+      if (withStartAudio) this.startAudio = async () => { this.startAudioCalled = true; };
+      FakeRoom.lastInstance = this;
+    }
+    on(ev, cb) { (this._listeners[ev] = this._listeners[ev] || []).push(cb); }
+    off(ev) { delete this._listeners[ev]; }
+    removeAllListeners() { this._listeners = {}; }
+    _emit(ev, ...args) { (this._listeners[ev] || []).forEach((cb) => cb(...args)); }
+    async connect() { this._connected = true; }
+    async disconnect() { this._disconnected = true; this._connected = false; }
+  }
+  FakeRoom.lastInstance = null;
+  FakeRoom.pub = pub;
+  FakeRoom.track = track;
+  return FakeRoom;
+}
+
+// scanRemoteAudio (pur) — 1. room vide -> listes vides
+test('hotfix scanRemoteAudio : room vide -> listes vides', () => {
+  assert.deepEqual(scanRemoteAudio(null), { participants: [], audioPubs: [] });
+  assert.deepEqual(scanRemoteAudio({ remoteParticipants: new Map() }), { participants: [], audioPubs: [] });
+});
+
+// 2. scanRemoteAudio : 1 participant + 1 pub audio (Map)
+test('hotfix scanRemoteAudio : 1 participant + 1 pub audio via Map', () => {
+  const pub = { kind: 'audio', name: 'program-audio' };
+  const p = { identity: 'perf', trackPublications: new Map([['t1', pub]]) };
+  const room = { remoteParticipants: new Map([['perf', p]]) };
+  const r = scanRemoteAudio(room);
+  assert.equal(r.participants.length, 1);
+  assert.equal(r.audioPubs.length, 1);
+  assert.equal(r.audioPubs[0].pub, pub);
+});
+
+// 3. scanRemoteAudio : ignore la vidéo et les pubs non-audio
+test('hotfix scanRemoteAudio : ignore vidéo et pubs non-audio', () => {
+  const p = { identity: 'perf', trackPublications: new Map([
+    ['a', { kind: 'audio', name: 'program-audio' }],
+    ['v', { kind: 'video', name: 'cam' }],
+  ]) };
+  const room = { remoteParticipants: new Map([['perf', p]]) };
+  const r = scanRemoteAudio(room);
+  assert.equal(r.audioPubs.length, 1);
+  assert.equal(r.audioPubs[0].pub.kind, 'audio');
+});
+
+// 4. scanRemoteAudio : objet plat (tests) au lieu de Map
+test('hotfix scanRemoteAudio : objet plat au lieu de Map', () => {
+  const p = { identity: 'perf', trackPublications: { t1: { kind: 'audio', name: 'program-audio' } } };
+  const room = { remoteParticipants: { perf: p } };
+  const r = scanRemoteAudio(room);
+  assert.equal(r.participants.length, 1);
+  assert.equal(r.audioPubs.length, 1);
+});
+
+// F.1. TrackSubscribed émis PENDANT connect() (avant résolution) -> piste conservée.
+test('hotfix : TrackSubscribed pendant connect() (isConnected false) -> piste conservée', async () => {
+  const sink = makeFakeAudioSink();
+  const RoomClass = makeFakeListenerRoomEmitDuringConnect({});
+  const l = makeListener({ RoomClass, audioSink: sink, retryDelays: [] });
+  const snap = await l.connect();
+  assert.equal(snap.hasAudioTrack, true, 'piste émise pendant connect() conservée (garde !room)');
+  assert.equal(snap.audioTrackSid, 'tr-perf');
+  assert.equal(sink._calls.attach.length, 1);
+  await flush();
+  assert.equal(l.getSnapshot().state, 'playing');
+  l.destroy();
+});
+
+// F.2. Participant déjà présent avant connect -> participantCount=1 (hotfix D).
+test('hotfix : participant déjà présent avant connect -> participantCount=1', async () => {
+  const RoomClass = makeFakeListenerRoomSubscribedPub({});
+  const l = makeListener({ RoomClass, retryDelays: [] });
+  const snap = await l.connect();
+  assert.equal(snap.participantCount, 1);
+  assert.equal(snap.existingParticipants, 1);
+  l.destroy();
+});
+
+// F.3. Publication audio présente avec track immédiat -> lecture.
+test('hotfix : pub audio avec track immédiat -> rattachée + lecture', async () => {
+  const sink = makeFakeAudioSink();
+  const RoomClass = makeFakeListenerRoomSubscribedPub({});
+  const l = makeListener({ RoomClass, audioSink: sink, retryDelays: [] });
+  const snap = await l.connect();
+  assert.equal(snap.hasAudioTrack, true);
+  assert.equal(snap.audioTrackSid, 'tr-perf');
+  assert.equal(snap.lastTrackEvent, 'subscribed');
+  await flush();
+  assert.equal(l.getSnapshot().state, 'playing');
+  l.destroy();
+});
+
+// F.4. Publication audio présente avec track=null -> setSubscribed(true) appelé.
+test('hotfix : pub audio track=null -> setSubscribed(true) demandé, pas d attach', async () => {
+  const sink = makeFakeAudioSink();
+  const RoomClass = makeFakeListenerRoomUnsubscribedPub({});
+  const l = makeListener({ RoomClass, audioSink: sink, retryDelays: [] });
+  const snap = await l.connect();
+  assert.equal(snap.hasAudioTrack, false, 'pas de piste tant que non souscrite');
+  assert.equal(RoomClass.pub._setSubscribedCalls, 1, 'setSubscribed(true) demandé une fois');
+  assert.equal(snap.subscribedAudioPublications, 1);
+  assert.equal(snap.state, 'waiting_for_track');
+  l.destroy();
+});
+
+// F.5. TrackSubscribed arrive après réconciliation (souscription effective) -> lecture.
+test('hotfix : TrackSubscribed après reconciliation -> lecture', async () => {
+  const sink = makeFakeAudioSink();
+  const RoomClass = makeFakeListenerRoomUnsubscribedPub({});
+  const l = makeListener({ RoomClass, audioSink: sink, retryDelays: [] });
+  await l.connect();
+  // La souscription demandée a déclenché setSubscribed(true) ; on simule
+  // l'arrivée effective de la piste via TrackSubscribed.
+  RoomClass.lastInstance._emit('trackSubscribed', RoomClass.track, RoomClass.pub, { identity: 'performer-A' });
+  await flush();
+  const s = l.getSnapshot();
+  assert.equal(s.hasAudioTrack, true);
+  assert.equal(s.audioTrackSid, 'tr-perf');
+  assert.equal(s.state, 'playing');
+  l.destroy();
+});
+
+// F.4b. setSubscribed n'est pas rappelé (anti-spam) si une 2e réconciliation tourne.
+test('hotfix : setSubscribed non rappelé sur 2e reconciliation (anti-spam)', async () => {
+  const RoomClass = makeFakeListenerRoomUnsubscribedPub({});
+  const l = makeListener({ RoomClass, retryDelays: [] });
+  await l.connect();
+  // Forcer une 2e réconciliation via ParticipantConnected.
+  RoomClass.lastInstance._emit('participantConnected');
+  await flush();
+  assert.equal(RoomClass.pub._setSubscribedCalls, 1, 'setSubscribed appelé une seule fois');
+  l.destroy();
+});
+
+// F.6. Deux listeners rejoignent successivement : les deux obtiennent program-audio.
+test('hotfix : 2 listeners successifs -> les 2 obtiennent program-audio', async () => {
+  const sink1 = makeFakeAudioSink();
+  const sink2 = makeFakeAudioSink();
+  const l1 = makeListener({ RoomClass: makeFakeListenerRoomSubscribedPub({ trackSid: 'tr-perf' }), audioSink: sink1, retryDelays: [] });
+  const l2 = makeListener({ RoomClass: makeFakeListenerRoomSubscribedPub({ trackSid: 'tr-perf' }), audioSink: sink2, retryDelays: [] });
+  const s1 = await l1.connect();
+  const s2 = await l2.connect();
+  assert.equal(s1.hasAudioTrack, true, 'listener 1 a program-audio');
+  assert.equal(s2.hasAudioTrack, true, 'listener 2 a program-audio');
+  assert.equal(sink1._calls.attach.length, 1);
+  assert.equal(sink2._calls.attach.length, 1);
+  await l1.destroy();
+  await l2.destroy();
+});
+
+// F.7. Reconnected -> reconciliation relancée (reconciliationCount augmente).
+test('hotfix : Reconnected -> reconciliation relancée', async () => {
+  const RoomClass = makeFakeListenerRoomSubscribedPub({});
+  const l = makeListener({ RoomClass, retryDelays: [] });
+  await l.connect();
+  const before = l.getSnapshot().reconciliationCount;
+  RoomClass.lastInstance._emit('reconnecting');
+  assert.equal(l.getSnapshot().state, 'reconnecting');
+  RoomClass.lastInstance._emit('reconnected');
+  const after = l.getSnapshot().reconciliationCount;
+  assert.ok(after > before, 'reconciliation relancée après Reconnected');
+  l.destroy();
+});
+
+// F.8. Pas de double attach : reconcile + TrackSubscribed tardif -> 1 attach.
+test('hotfix : pas de double attach (reconcile + TrackSubscribed tardif)', async () => {
+  const sink = makeFakeAudioSink();
+  const RoomClass = makeFakeListenerRoomSubscribedPub({});
+  const l = makeListener({ RoomClass, audioSink: sink, retryDelays: [] });
+  await l.connect();
+  // TrackSubscribed tardif pour la même piste -> ignoré (idempotent).
+  RoomClass.lastInstance._emit('trackSubscribed', RoomClass.pub.track, RoomClass.pub, { identity: 'performer-A' });
+  await flush();
+  assert.equal(sink._calls.attach.length, 1, 'attachTrack appelé une seule fois');
+  l.destroy();
+});
+
+// F.9. iOS simulé : room.startAudio() appelé sur le geste utilisateur (connect).
+test('hotfix iOS : room.startAudio() appelé dans le geste (connect)', async () => {
+  const RoomClass = makeFakeListenerRoomSubscribedPub({ withStartAudio: true });
+  const l = makeListener({ RoomClass, retryDelays: [] });
+  const snap = await l.connect();
+  assert.equal(RoomClass.lastInstance.startAudioCalled, true, 'room.startAudio() appelé au connect');
+  assert.equal(snap.audioUnlocked, true);
+  assert.equal(snap.roomCanPlaybackAudio, true);
+  l.destroy();
+});
+
+// F.10. Autoplay refusé -> waiting_for_user + bouton ACTIVER LE SON visible.
+test('hotfix iOS : autoplay refusé -> waiting_for_user + bouton ACTIVER LE SON', async () => {
+  const sink = makeFakeAudioSink({ playMode: 'NotAllowed' });
+  const RoomClass = makeFakeListenerRoomSubscribedPub({ withStartAudio: true });
+  const l = makeListener({ RoomClass, audioSink: sink, retryDelays: [] });
+  await l.connect();
+  await flush();
+  const s = l.getSnapshot();
+  assert.equal(s.state, 'waiting_for_user');
+  assert.equal(s.autoplayBlocked, true);
+  // Rendu UI : bouton ACTIVER LE SON visible, primary masqué.
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState(s, els);
+  assert.equal(els.activate.hidden, false, 'ACTIVER LE SON visible');
+  assert.equal(els.primary.hidden, true, 'primary masqué quand ACTIVER LE SON visible');
+  l.destroy();
+});
+
+// F.11. Second geste (ACTIVER LE SON) : room.startAudio() + audioSink.play() -> playing.
+test('hotfix iOS : 2e geste -> room.startAudio + play -> playing', async () => {
+  const sink = makeFakeAudioSink({ playMode: 'NotAllowed' });
+  const RoomClass = makeFakeListenerRoomSubscribedPub({ withStartAudio: true });
+  const l = makeListener({ RoomClass, audioSink: sink, retryDelays: [] });
+  await l.connect();
+  await flush();
+  assert.equal(l.getSnapshot().state, 'waiting_for_user');
+  // Second geste utilisateur : on autorise maintenant la lecture.
+  sink._setPlayMode(null);
+  await l.startAudio();
+  const s = l.getSnapshot();
+  assert.equal(s.state, 'playing', 'lecture démarrée au 2e geste');
+  assert.equal(s.autoplayBlocked, false);
+  l.destroy();
+});
+
+// F.12. participantCount reflète les remoteParticipants existants après un
+// ParticipantConnected (recompté, pas seulement incrémenté).
+test('hotfix : participantCount recompté depuis remoteParticipants après ParticipantConnected', async () => {
+  const RoomClass = makeFakeListenerRoomSubscribedPub({});
+  const l = makeListener({ RoomClass, retryDelays: [] });
+  await l.connect();
+  assert.equal(l.getSnapshot().participantCount, 1);
+  // Ajout d'un 2e participant distant.
+  RoomClass.lastInstance.remoteParticipants.set('performer-B', { identity: 'performer-B', trackPublications: new Map() });
+  RoomClass.lastInstance._emit('participantConnected');
+  await flush();
+  assert.equal(l.getSnapshot().participantCount, 2);
+  l.destroy();
+});
+
+// F.13. Retry borné : 3 timers programmés (100/300/750ms), flush -> réconciliations.
+test('hotfix retry : 3 timers programmés puis déclenchés (borné, pas de polling infini)', async () => {
+  const timer = fakeListenerTimer();
+  const RoomClass = makeFakeListenerRoomSubscribedPub({});
+  const l = makeListener({ RoomClass, audioSink: makeFakeAudioSink(), retryDelays: DEFAULT_RETRY_DELAYS, timerImpl: timer });
+  await l.connect();
+  assert.equal(timer._count(), 3, '3 timers programmés (100/300/750)');
+  const before = l.getSnapshot().reconciliationCount;
+  timer._flush();
+  const after = l.getSnapshot().reconciliationCount;
+  assert.ok(after > before, 'réconciliations déclenchées par le retry');
+  assert.equal(timer._count(), 0, 'plus aucun timer en attente après flush');
+  l.destroy();
+});
+
+// F.14. TrackPublished après connect -> reconciliation relancée (souscription
+//      demandée / piste rattachée). lastTrackPublishedAt est horodaté.
+test('hotfix : TrackPublished après connect -> reconciliation relancée', async () => {
+  const RoomClass = makeFakeListenerRoomUnsubscribedPub({});
+  const l = makeListener({ RoomClass, audioSink: makeFakeAudioSink(), retryDelays: [] });
+  await l.connect();
+  assert.equal(RoomClass.pub._setSubscribedCalls, 1);
+  assert.equal(l.getSnapshot().lastTrackPublishedAt, null);
+  RoomClass.lastInstance._emit('trackPublished', RoomClass.pub, { identity: 'performer-A' });
+  await flush();
+  const s = l.getSnapshot();
+  assert.ok(typeof s.lastTrackPublishedAt === 'number', 'lastTrackPublishedAt horodaté');
+  assert.equal(s.hasAudioTrack, true, 'piste rattachée via TrackPublished');
+  // setSubscribed n'est pas rappelé (déjà demandé) -> toujours 1.
+  assert.equal(RoomClass.pub._setSubscribedCalls, 1);
+  l.destroy();
+});
+
+// F.15. Aucun secret dans le snapshot listener (hotfix : nouveaux champs diag).
+test('hotfix : snapshot listener sans secret (audioUnlocked + diag, aucun token/password)', async () => {
+  const RoomClass = makeFakeListenerRoomSubscribedPub({});
+  const l = makeListener({ RoomClass, retryDelays: [] });
+  const snap = await l.connect();
+  const json = JSON.stringify(snap);
+  assert.equal(snap.token, undefined);
+  assert.equal(snap.password, undefined);
+  assert.ok(!/token|password|apiKey|apiSecret|secret/i.test(json.replace(/lastError/g, '')));
+  assert.equal(typeof snap.audioUnlocked, 'boolean');
+  assert.equal(typeof snap.reconciliationCount, 'number');
   l.destroy();
 });

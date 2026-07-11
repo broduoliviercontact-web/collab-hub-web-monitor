@@ -39,6 +39,16 @@ export function initDiagnostic(api, root, persistence = {}) {
   const lkVolume = el(root, 'diag-lk-volume');
   const lkMuted = el(root, 'diag-lk-muted');
   const lkAutoplay = el(root, 'diag-lk-autoplay');
+  // Hotfix multi-listener / iOS : diagnostic de réconciliation + iOS.
+  const lkAudioUnlocked = el(root, 'diag-lk-audio-unlocked');
+  const lkRoomCanPlay = el(root, 'diag-lk-room-can-play');
+  const lkExistingParticipants = el(root, 'diag-lk-existing-participants');
+  const lkExistingPubs = el(root, 'diag-lk-existing-pubs');
+  const lkSubscribedPubs = el(root, 'diag-lk-subscribed-pubs');
+  const lkReconciliations = el(root, 'diag-lk-reconciliations');
+  const lkLastTrackEvent = el(root, 'diag-lk-last-track-event');
+  const lkTrackPublishedAt = el(root, 'diag-lk-track-published-at');
+  const lkTrackSubscribedAt = el(root, 'diag-lk-track-subscribed-at');
   const lkReconnects = el(root, 'diag-lk-reconnects');
   const lkError = el(root, 'diag-lk-error');
   const livekitDiag = typeof persistence.livekitDiag === 'function' ? persistence.livekitDiag : null;
@@ -133,6 +143,15 @@ export function initDiagnostic(api, root, persistence = {}) {
     if (lkVolume) lkVolume.textContent = typeof s.volume === 'number' ? `${Math.round(s.volume * 100)}%` : '—';
     if (lkMuted) lkMuted.textContent = s.muted ? 'oui' : 'non';
     if (lkAutoplay) lkAutoplay.textContent = s.autoplayBlocked ? 'oui' : 'non';
+    if (lkAudioUnlocked) lkAudioUnlocked.textContent = s.audioUnlocked ? 'oui' : 'non';
+    if (lkRoomCanPlay) lkRoomCanPlay.textContent = s.roomCanPlaybackAudio ? 'oui' : 'non';
+    if (lkExistingParticipants) lkExistingParticipants.textContent = s.existingParticipants != null ? String(s.existingParticipants) : '—';
+    if (lkExistingPubs) lkExistingPubs.textContent = s.existingAudioPublications != null ? String(s.existingAudioPublications) : '—';
+    if (lkSubscribedPubs) lkSubscribedPubs.textContent = s.subscribedAudioPublications != null ? String(s.subscribedAudioPublications) : '—';
+    if (lkReconciliations) lkReconciliations.textContent = s.reconciliationCount != null ? String(s.reconciliationCount) : '—';
+    if (lkLastTrackEvent) lkLastTrackEvent.textContent = s.lastTrackEvent || '—';
+    if (lkTrackPublishedAt) lkTrackPublishedAt.textContent = fmtTs(s.lastTrackPublishedAt);
+    if (lkTrackSubscribedAt) lkTrackSubscribedAt.textContent = fmtTs(s.lastTrackSubscribedAt);
     if (lkReconnects) lkReconnects.textContent = s.reconnectCount != null ? String(s.reconnectCount) : '—';
     if (lkError) lkError.textContent = (s.lastError && s.lastError.code) || '—';
   }

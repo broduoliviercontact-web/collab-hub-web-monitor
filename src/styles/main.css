@@ -219,6 +219,14 @@ main.card[data-content-fresh="false"] .block {
   outline-offset: 2px;
 }
 .lk-controls button[hidden] { display: none; }
+/* Hotfix iOS/Safari : bouton explicite "ACTIVER LE SON" (autoplay refusé). */
+.lk-activate {
+  font-weight: 600;
+  border-color: var(--accent-soft);
+  color: var(--accent-soft);
+}
+.lk-activate:hover { border-color: var(--accent-soft); }
+.lk-activate[hidden] { display: none; }
 .lk-volume {
   display: inline-flex;
   align-items: center;

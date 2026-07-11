@@ -76,6 +76,17 @@ export function buildListenerDOM(documentRef = (typeof document !== 'undefined' 
   primary.type = 'button';
   primary.textContent = 'ÉCOUTER LE DIRECT';
 
+  // Hotfix iOS/Safari : bouton explicite "ACTIVER LE SON" affiché quand la
+  // lecture automatique a été refusée (waiting_for_user + autoplayBlocked). Il
+  // déclenche room.startAudio() + audioSink.play() dans un nouveau geste
+  // utilisateur (requis sur iOS pour activer la sortie audio).
+  const activate = doc.createElement('button');
+  activate.id = 'lk-activate';
+  activate.type = 'button';
+  activate.className = 'lk-activate';
+  activate.textContent = 'ACTIVER LE SON';
+  activate.hidden = true;
+
   // Bouton enceinte (Lot 4F.1) : clic = mute/unmute, double-clic = -20 dB.
   // Vrai <button> accessible (aria-label + title), pas un emoji décoratif.
   const speaker = doc.createElement('button');
@@ -116,7 +127,7 @@ export function buildListenerDOM(documentRef = (typeof document !== 'undefined' 
   volumeLabel.textContent = '80%';
   volumeWrap.append(volume, ' ', volumeLabel);
 
-  controls.append(primary, speaker, attenBadge, attenBtn, volumeWrap);
+  controls.append(primary, activate, speaker, attenBadge, attenBtn, volumeWrap);
   block.append(title, statusLine, controls);
   section.append(block);
 
@@ -124,7 +135,7 @@ export function buildListenerDOM(documentRef = (typeof document !== 'undefined' 
     mountAfter.parentNode.insertBefore(section, mountAfter.nextSibling);
   }
 
-  const els = { section, status, dot, primary, speaker, attenBadge, attenBtn, volume, volumeLabel, volumeWrap };
+  const els = { section, status, dot, primary, activate, speaker, attenBadge, attenBtn, volume, volumeLabel, volumeWrap };
   return { section, els };
 }
 
@@ -143,8 +154,12 @@ export function renderListenerState(snap, els) {
   if (els.dot) els.dot.className = `status-dot ${DOT_CLASS[state] || 'is-off'}`;
 
   const showPrimary = PRIMARY_VISIBLE.has(state);
+  // Hotfix iOS : bouton ACTIVER LE SON quand l'autoplay a été refusé (un second
+  // geste utilisateur est nécessaire pour activer la sortie audio sur Safari).
+  const showActivate = state === 'waiting_for_user' && !!snap.autoplayBlocked;
+  if (els.activate) els.activate.hidden = !showActivate;
   if (els.primary) {
-    els.primary.hidden = !showPrimary;
+    els.primary.hidden = !showPrimary || showActivate;
     els.primary.textContent = state === 'error' ? 'RÉESSAYER' : 'ÉCOUTER LE DIRECT';
   }
 
@@ -212,12 +227,16 @@ export function createClickDiscriminator(
 }
 
 // Câble les contrôles. onPrimary (écouter/réessayer/démarrer audio selon état
-// courant, géré par l'orchestrateur), onMuteToggle (clic enceinte),
+// courant, géré par l'orchestrateur), onActivate (second geste iOS/Safari ->
+// room.startAudio + play), onMuteToggle (clic enceinte),
 // onAttenuationToggle (double-clic enceinte OU bouton -20 dB), onVolume(0..1).
-export function wireListenerControls({ els, onPrimary, onMuteToggle, onAttenuationToggle, onVolume } = {}) {
+export function wireListenerControls({ els, onPrimary, onActivate, onMuteToggle, onAttenuationToggle, onVolume } = {}) {
   if (!els) return;
   if (els.primary && typeof els.primary.addEventListener === 'function' && onPrimary) {
     els.primary.addEventListener('click', onPrimary);
+  }
+  if (els.activate && typeof els.activate.addEventListener === 'function' && onActivate) {
+    els.activate.addEventListener('click', onActivate);
   }
   // Bouton enceinte : clic simple = mute, double-clic = -20 dB (discrimination).
   if (els.speaker && typeof els.speaker.addEventListener === 'function' && (onMuteToggle || onAttenuationToggle)) {
