@@ -4132,6 +4132,7 @@ import {
 } from '../src/control-room/streamPresencePublisher.js';
 import {
   buildStreamStatusDOM, renderStreamStatus,
+  mountStreamCard, shouldMountStreamCard,
 } from '../src/ui/streamStatusView.js';
 
 // Faux emitter Collab-Hub : capture les publish(header, values).
@@ -4586,4 +4587,81 @@ test('diagnostics : aucun secret/token/password dans publisher + streamStatus', 
   const { pub } = await makeChPublisher({});
   const dJson = JSON.stringify(pub.getDiagnostics());
   assert.ok(!secretPat.test(dJson), 'publishClient: aucun secret dans diagnostics');
+});
+
+// ============================================================
+// Lot 4G (ajustement) — carte de flux visible uniquement en mode debug
+// (src/ui/streamStatusView.js shouldMountStreamCard/mountStreamCard,
+//  src/publicPage.js). La logique métier (streamStatus, observation, routage,
+//  diagnostic) reste active hors debug ; seul le DOM public est masqué.
+// ============================================================
+
+// A1. hors debug, aucune .stream-card dans le DOM
+test('stream-card : masquée hors debug (aucun DOM .stream-card créé)', () => {
+  const doc = fakeDocument();
+  const card = doc.querySelector('main.card');
+  const st = createStreamStatus({ now: () => 1000 });
+  const mounted = mountStreamCard(doc, card, { debug: false, livekitEnabled: true, streamStatus: st });
+  assert.equal(mounted, null);
+  assert.ok(!doc._created.some((e) => e.className && e.className.includes('stream-card')),
+    'aucune .stream-card créée hors debug');
+});
+
+// A2. en debug, .stream-card présente et fonctionnelle
+test('stream-card : présente et rendue en mode debug', () => {
+  const doc = fakeDocument();
+  const card = doc.querySelector('main.card');
+  const st = createStreamStatus({ now: () => 1000 });
+  ingestStream(st, { onAir: 1, level: 0.5, peak: 0.8, updatedAt: 1000 });
+  const mounted = mountStreamCard(doc, card, { debug: true, livekitEnabled: true, streamStatus: st });
+  assert.ok(mounted && mounted.section, 'carte montée en debug');
+  const section = doc._created.find((e) => e.className && e.className.includes('stream-card'));
+  assert.ok(section, '.stream-card présente');
+  assert.equal(section._attrs['data-stream-status'], STREAM_STATUS.LIVE, 'snapshot initial rendu');
+});
+
+// A3. listener visible dans les deux cas (debug n'affecte pas le listener)
+test('listener : visible quel que soit debug (ÉCOUTER LE DIRECT inchangé)', () => {
+  for (const debug of [false, true]) {
+    const doc = fakeDocument();
+    const { els } = buildListenerDOM(doc, null);
+    assert.ok(els.section, `section listener construite (debug=${debug})`);
+    assert.equal(els.primary.textContent, 'ÉCOUTER LE DIRECT', `bouton principal inchangé (debug=${debug})`);
+  }
+});
+
+// A4. diagnostic flux cohérent même hors debug (streamStatus actif sans carte)
+test('diagnostic flux : cohérent hors debug (routage actif sans carte)', () => {
+  const c = makeClock(1000);
+  const st = createStreamStatus({ now: c.now });
+  // Carte non montée (debug=false) mais logique métier active :
+  routeStreamControl({ header: 'stream_onair', values: [1] }, st);
+  routeStreamControl({ header: 'stream_level', values: [0.5] }, st);
+  const merged = { ...st.getSnapshot(), ...st.getDiagnostics() };
+  assert.equal(merged.computedStatus, STREAM_STATUS.LIVE);
+  assert.equal(merged.receivedCount.stream_onair, 1);
+  assert.equal(merged.receivedCount.stream_level, 1);
+  assert.equal(merged.lastStreamHeader, 'stream_level');
+});
+
+// A5. règle de montage + pas de régression des headers stream_*
+test('stream-card : règle shouldMountStreamCard (debug ET livekit)', () => {
+  assert.equal(shouldMountStreamCard(false, true), false, 'hors debug -> pas de carte');
+  assert.equal(shouldMountStreamCard(true, true), true, 'debug + livekit -> carte');
+  assert.equal(shouldMountStreamCard(false, false), false, 'rien -> pas de carte');
+  assert.equal(shouldMountStreamCard(true, false), false, 'debug sans livekit -> pas de carte');
+});
+
+// A6. aucun changement sur le moteur listener (DOM + contrôles présents)
+test('listener : moteur inchangé (contrôles attendus présents)', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  // Contrats stables du moteur listener (Lot 4D/4F.1) : bouton principal,
+  // bouton activation iOS, bouton enceinte, badge atténuation, statut.
+  assert.equal(els.primary.id, 'lk-primary');
+  assert.equal(els.activate.id, 'lk-activate');
+  assert.equal(els.activate.textContent, 'ACTIVER LE SON');
+  assert.equal(els.speaker.id, 'lk-speaker');
+  assert.equal(els.attenBadge.id, 'lk-atten-badge');
+  assert.equal(els.status.id, 'lk-status');
 });

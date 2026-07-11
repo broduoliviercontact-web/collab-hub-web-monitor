@@ -28,6 +28,32 @@ const DOT_CLASS = {
   [STREAM_STATUS.UNAVAILABLE]: 'is-wait',
 };
 
+// Lot 4G (ajustement) : la carte de flux direct n'est montée sur la page publique
+// qu'en mode debug (?debug=1). La logique métier (streamStatus, observation des
+// headers stream_*, routage, diagnostic) reste active hors debug ; seul le DOM
+// public est masqué pour garder « ÉCOUTER LE DIRECT » comme entrée principale.
+// Règle pure -> testable en Node.
+export function shouldMountStreamCard(debug, livekitEnabled) {
+  return Boolean(debug) && Boolean(livekitEnabled);
+}
+
+// Montre la carte uniquement si la règle le permet. Retourne { section, els } si
+// montée (et rend le snapshot initial si fourni), null sinon. Ne crée AUCUN DOM
+// hors debug (pas de display:none sur un bloc monté -> rien du tout).
+export function mountStreamCard(
+  documentRef = (typeof document !== 'undefined' ? document : null),
+  mountAfter = null,
+  { debug, livekitEnabled, streamStatus } = {},
+) {
+  if (!shouldMountStreamCard(debug, livekitEnabled)) return null;
+  const built = buildStreamStatusDOM(documentRef, mountAfter);
+  if (!built || !built.section) return null;
+  if (streamStatus && typeof streamStatus.getSnapshot === 'function') {
+    renderStreamStatus(streamStatus.getSnapshot(), built.els);
+  }
+  return { section: built.section, els: built.els };
+}
+
 // Construit le bloc DOM. `mountAfter` : si fourni, inséré juste après cet
 // élément. Retourne { section, els }.
 export function buildStreamStatusDOM(

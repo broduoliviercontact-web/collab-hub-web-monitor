@@ -12,7 +12,7 @@ import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
 import { loadSoundState, saveSoundState, clearSoundState } from './state/persist.js';
 import { createFreshnessState, computePublicStatus } from './state/freshness.js';
 import { createStreamStatus, routeStreamControl } from './state/streamStatus.js';
-import { buildStreamStatusDOM, renderStreamStatus } from './ui/streamStatusView.js';
+import { renderStreamStatus, mountStreamCard } from './ui/streamStatusView.js';
 import { isLiveKitEnabled } from './listener/listenerUI.js';
 
 export function mountPublicPage() {
@@ -59,18 +59,19 @@ export function mountPublicPage() {
   }
 
   // --- État de flux direct (Lot 4G) : statut public AVANT connexion LiveKit ---
-  // Construit et observé seulement si LiveKit activé (cohérent avec la section
-  // d'écoute). Aucune connexion listener utilisée pour déterminer la présence.
+  // La logique métier (streamStatus, observation des headers stream_*, routage,
+  // diagnostic) reste active si LiveKit activé. La CARTE publique n'est montée
+  // qu'en mode debug (?debug=1) — hors debug, « ÉCOUTER LE DIRECT » reste
+  // l'entrée principale et aucun DOM de flux n'est créé.
   let streamStatus = null;
   let streamEls = null;
   let streamAnchor = els.card;
   if (LIVEKIT_ENABLED) {
     streamStatus = createStreamStatus({ now: Date.now });
-    const built = buildStreamStatusDOM(document, els.card);
-    if (built && built.section) {
-      streamEls = built.els;
-      streamAnchor = built.section; // la section listener se monte APRÈS ce bloc
-      renderStreamStatus(streamStatus.getSnapshot(), streamEls);
+    const mounted = mountStreamCard(document, els.card, { debug, livekitEnabled: LIVEKIT_ENABLED, streamStatus });
+    if (mounted) {
+      streamEls = mounted.els;
+      streamAnchor = mounted.section; // la section listener se monte APRÈS ce bloc
     }
   }
 
