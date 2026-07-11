@@ -1,17 +1,17 @@
-// Point d'entrée de la page /control-room (Lot 4E). Assemble le moteur audio
-// réel (audioEngine), le publisher LiveKit réel (livekitPublisher + livekitBrowser
-// pour Room/LocalAudioTrack/Track/AudioPresets), le contrôleur, la vue, et le
-// VU-mètre. Chargé via import() dynamique par src/main.js uniquement sur la
-// route /control-room -> le SDK livekit-client n'est jamais téléchargé sur la
-// page publique.
+// Point d'entrée de la Control Room performer (Lot 4E / 4F.1). Assemble le moteur
+// audio réel (audioEngine), le publisher LiveKit réel (livekitPublisher +
+// livekitBrowser), le contrôleur, la vue et le VU-mètre. Chargé via import()
+// dynamique par controlRoomGatePage.js UNIQUEMENT après authentification serveur
+// -> le SDK livekit-client n'est téléchargé qu'après login valide, jamais avant.
 //
-// Sécurité : aucun secret côté navigateur. Le mot de passe performer est lu dans
-// l'<input> et transmis au contrôleur (-> publisher -> tokenClient -> endpoint
-// serverless) puis vidé de l'<input> sur succès. Aucune publication / capture
-// automatique au chargement : tout démarre sur action utilisateur. beforeunload
-// -> destroy() non bloquant.
+// Sécurité (Lot 4F.1) : aucun secret côté navigateur, aucun mot de passe en
+// Control Room (auth via cookie de session same-origin). Aucune publication /
+// capture automatique au chargement : tout démarre sur action utilisateur.
+// onLogout : déconnexion explicite (bouton QUITTER). onSessionExpired : détectée
+// quand le publisher reçoit token_unauthorized (cookie expiré) -> le gate revient
+// au login. beforeunload -> destroy() non bloquant.
 //
-// Exporté : mountControlRoom().
+// Exporté : mountControlRoom({ onLogout, onSessionExpired }).
 
 import { createAudioEngine } from '../audio/audioEngine.js';
 import { createLiveKitPublisher } from '../audio/livekitPublisher.js';
@@ -27,7 +27,7 @@ import {
 } from './controlRoomView.js';
 import '../styles/main.css';
 
-export function mountControlRoom() {
+export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
   const doc = typeof document !== 'undefined' ? document : null;
   if (!doc) return null;
 
@@ -35,9 +35,6 @@ export function mountControlRoom() {
   const { root, els } = buildControlRoomDOM(doc, mount);
   if (!root) return null;
 
-  // Moteurs réels. audioEngine utilise navigator.mediaDevices + AudioContext du
-  // navigateur. publisher injecte Room/LocalAudioTrack/Track.Source.Microphone et
-  // le preset musique stéréo haute qualité (128 kbps, DTX off, stéréo forcée).
   const audioEngine = createAudioEngine();
   const publisher = createLiveKitPublisher({
     tokenClient: { requestLiveKitToken },
@@ -50,9 +47,9 @@ export function mountControlRoom() {
   });
   const controller = createControlRoomController({ audioEngine, publisher });
 
-  // --- VU-mètre : rAF en capture, cadence réduite si prefers-reduced-motion ---
   let rafId = null;
   let meterTimer = null;
+  let sessionExpiredSignaled = false;
   const reduceMotion = typeof matchMedia === 'function'
     && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -71,19 +68,22 @@ export function mountControlRoom() {
     renderMeter(null, els);
   }
 
-  // --- Rendu : abonnement au snapshot composite (aucune valeur secrète) ---
   function onSnapshot(snap) {
     renderControlRoom(snap, els, { debug });
     updateBroadcastEnabled(els);
     if (snap.audioState === 'capturing') startMeter(); else stopMeter();
+    // Expiration de session : le token performer est refusé (401) -> token_unauthorized.
+    // On ne signale qu'une fois, puis on rend la main au gate (retour au login).
+    if (!sessionExpiredSignaled && snap.error && snap.error.code === 'token_unauthorized') {
+      sessionExpiredSignaled = true;
+      if (typeof onSessionExpired === 'function') onSessionExpired();
+    }
     if (debug && debugPre) {
-      // Diagnostic : snapshot composite complet (jamais de token/mot de passe/clé).
       debugPre.textContent = JSON.stringify(snap, null, 2);
     }
   }
   controller.subscribe(onSnapshot);
 
-  // --- Câblage des contrôles ---
   wireControlRoom({
     els,
     handlers: {
@@ -96,16 +96,12 @@ export function mountControlRoom() {
       async onStartCapture() { await controller.startCapture(); },
       async onStopCapture() { await controller.stopCapture(); },
       onGain(pct) { controller.setGain(pct); },
-      async onStartBroadcast(password) {
-        const r = await controller.startBroadcast(password);
-        // Mot de passe vidé de l'<input> sur succès (jamais conservé).
-        if (r && r.ok && els.password) { els.password.value = ''; updateBroadcastEnabled(els); }
-      },
+      async onStartBroadcast() { await controller.startBroadcast(); },
       async onStopBroadcast() { await controller.stopBroadcast(); },
+      onLogout() { if (typeof onLogout === 'function') onLogout(); },
     },
   });
 
-  // --- Diagnostic ?debug=1 : audio + LiveKit, jamais de token/mot de passe/clé ---
   const debug = new URLSearchParams(location.search).get('debug') === '1';
   let debugPre = null;
   if (debug) {
@@ -117,13 +113,23 @@ export function mountControlRoom() {
     root.append(dbg);
   }
 
-  // Première passe.
   onSnapshot(controller.getSnapshot());
 
-  // beforeunload : nettoyage non bloquant, sans fetch supplémentaire.
+  let unloaded = false;
   if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', () => { controller.destroy(); }, { once: true });
   }
 
-  return { controller, audioEngine, publisher, els, root };
+  // Démontage propre (logout / expiration) : stoppe moteurs + retire le DOM.
+  async function destroy() {
+    if (unloaded) return;
+    unloaded = true;
+    stopMeter();
+    try { await controller.destroy(); } catch {}
+    if (root && root.parentNode && typeof root.parentNode.removeChild === 'function') {
+      try { root.parentNode.removeChild(root); } catch {}
+    }
+  }
+
+  return { controller, audioEngine, publisher, els, root, destroy };
 }

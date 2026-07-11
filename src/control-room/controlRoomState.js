@@ -130,7 +130,7 @@ const ERROR_MESSAGES = {
   // publisher / token (Lot 4C)
   no_output_stream: 'Aucun flux de capture — démarrez la capture d’abord.',
   no_audio_track: 'Aucune piste audio live dans le flux de capture.',
-  token_unauthorized: 'Mot de passe incorrect.',
+  token_unauthorized: 'Session expirée — reconnectez-vous à la Control Room.',
   token_unavailable: 'Service LiveKit indisponible (réessayez plus tard).',
   token_invalid_response: 'Réponse du service LiveKit invalide.',
   token_network_error: 'Erreur réseau lors de la demande de token.',

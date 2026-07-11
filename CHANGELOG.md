@@ -11,12 +11,24 @@
 - publisher LiveKit (connecte le `MediaStream` post-fader à LiveKit) ;
 - reconnexion native (performer et listener) ;
 - diagnostic audio/LiveKit (`?debug=1`, sans secret).
+- **Lot 4F.1** : accès Control Room protégé par session serveur signée
+  (HMAC-SHA256, cookie `control_room_session`, 2 h, HttpOnly, SameSite=Strict,
+  Secure en production) ; endpoints `POST /api/control-room/login`,
+  `POST /api/control-room/logout`, `GET /api/control-room/session` ; gate page
+  léger (~16 ko, sans `livekit-client`) chargé avant auth, Control Room lourde
+  importée dynamiquement après auth ; bouton enceinte listener accessible
+  (🔊/🔉/🔇, clic = mute, double-clic = atténuation −20 dB, bouton secondaire
+  pour clavier/tactile) ; 55 tests (271 → 326).
 
 ### Changed
 - `src/main.js` devient un routeur (pathname → page publique | Control Room) ;
 - `vercel.json` ajoute le rewrite `/control-room` → `control-room.html` ;
 - `vite.config.js` déclare un second point d'entrée HTML ;
 - `livekitBrowser.js` re-exporte `LocalAudioTrack` + `AudioPresets`.
+- **Lot 4F.1** : `POST /api/livekit/token` ne compare plus de mot de passe pour
+  le rôle performer (vérifie le cookie de session à la place) ; le champ
+  `password` du corps est ignoré ; le mot de passe est demandé une seule fois
+  (à la connexion Control Room) ; `tokenClient` envoie `credentials:'same-origin'`.
 
 ### Fixed
 - Aucun correctif de code apporté pendant le Lot 4F : la revue de code et les
@@ -25,6 +37,8 @@
   (Ableton+BlackHole, Chrome/Safari/mobile, coupure réseau, devicechange,
   qualité audio) restent à valider manuellement — voir
   `docs/bmad/13-livekit-stabilization-and-release.md`.
+- **Lot 4F.1** : le mot de passe performer n'est plus transmis à chaque demande
+  de token (cause racine : session serveur, pas de garde-fou client).
 
 ### Security
 - tokens LiveKit temporaires (TTL 2 h, `Cache-Control: no-store`) ;
@@ -36,6 +50,11 @@
 - performer sans droit de souscription (`canSubscribe:false`) ;
 - contrôle automatique des secrets (`scripts/check-livekit-secrets.mjs` dans
   `npm run check`).
+- **Lot 4F.1** : session Control Room signée HMAC-SHA256
+  (`CONTROL_ROOM_SESSION_SECRET`, distincte, jamais `VITE_`) ; `PERFORMER_PASSWORD`
+  jamais utilisée comme clé de signature ; comparaisons timing-safe (mot de
+  passe + MAC) ; 401 génériques ; aucun mot de passe / secret / token loggué ou
+  reflété ; `check-livekit-secrets` refuse `VITE_CONTROL_ROOM_SESSION_SECRET`.
 
 ## [1.0.1] - 2026-07-10
 

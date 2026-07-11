@@ -4,10 +4,11 @@
 // AUCUNE valeur secrète. Entièrement injectable (audioEngine, publisher, now) ->
 // testable en Node sans navigateur, micro ni vrai LiveKit.
 //
-// Sécurité (§13/§18/§20) : le mot de passe performer est un paramètre local de
-// startBroadcast, jamais stocké, jamais loggué, jamais dans le snapshot, transmis
-// uniquement à publisher.connect (-> tokenClient -> /api/livekit/token). Le token
-// reste dans le publisher (mémoire) et n'est jamais exposé ici.
+// Sécurité (Lot 4F.1) : l'authentification performer se fait via une session
+// Control Room serveur (cookie same-origin), gérée en amont par le gate
+// (controlRoomGate). Le publisher demande un token performer sans mot de passe ;
+// le cookie de session accompagne la requête. Aucun mot de passe ne transite
+// par le contrôleur. Le token reste dans le publisher (mémoire), jamais exposé.
 
 import {
   deriveCompositeState,
@@ -119,8 +120,8 @@ export function createControlRoomController({
     return audioEngine.readMeter();
   }
 
-  // Démarre la diffusion. password : paramètre local, jamais conservé.
-  async function startBroadcast(password) {
+  // Démarre la diffusion. Aucun mot de passe (auth via cookie de session).
+  async function startBroadcast() {
     lastActionResult = null;
     if (broadcasting) { lastActionResult = { ok: false, code: 'publisher_busy' }; notify(); return lastActionResult; }
     const pState = publisher.getState();
@@ -128,14 +129,11 @@ export function createControlRoomController({
     if (audioEngine.getState() !== 'capturing') { lastActionResult = { ok: false, code: 'no_output_stream' }; notify(); return lastActionResult; }
     const outputStream = audioEngine.getOutputStream();
     if (!outputStream) { lastActionResult = { ok: false, code: 'no_output_stream' }; notify(); return lastActionResult; }
-    if (typeof password !== 'string' || password.length === 0) {
-      lastActionResult = { ok: false, code: 'no_password' }; notify(); return lastActionResult;
-    }
 
     broadcasting = true;
     notify(); // -> canBroadcast false pendant la tentative (UI désactive).
     try {
-      await publisher.connect({ password, outputStream });
+      await publisher.connect({ outputStream });
       lastActionResult = { ok: true };
       return lastActionResult;
     } catch (e) {
@@ -153,8 +151,8 @@ export function createControlRoomController({
   }
 
   // Retry = redémarre la diffusion (publisher en error/stopped, non actif).
-  function retry(password) {
-    return startBroadcast(password);
+  function retry() {
+    return startBroadcast();
   }
 
   // Arrêt total : stoppe la diffusion puis la capture. Idempotent.

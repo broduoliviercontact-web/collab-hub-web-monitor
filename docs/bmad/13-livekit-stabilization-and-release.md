@@ -4,6 +4,14 @@ Objectif : stabiliser la couche audio LiveKit (Lots 4B–4E), vérifier la
 compatibilité navigateurs, et préparer la release v1.1.0. **Aucune nouvelle
 fonctionnalité hors correctifs nécessaires.**
 
+> **Suite — Lot 4F.1** : ce lot a été suivi du Lot 4F.1 « accès protégé Control
+> Room + bouton enceinte listener » (session serveur signée + atténuation
+> −20 dB). Détails dans `docs/bmad/14-control-room-session-and-listener-attenuation.md`.
+> Le Lot 4F.1 ne crée **pas** de tag/release v1.1.0 (validation runtime
+> manuelle toujours en attente) ; la version reste 1.1.0. Les compteurs de
+> tests ci-dessous (271) reflètent l'état Lot 4F ; le Lot 4F.1 porte le total à
+> **326 tests** verts.
+
 > **Convention de validation** (à respecter dans toute la doc et les notes de
 > release) : chaque item est marqué selon son niveau réel de validation :
 > - **[AUTO]** vérifié automatiquement (tests, build, `npm run check`) ;
@@ -220,6 +228,10 @@ Pour chaque défaut réel :
 **Aucun** (aucun défaut observé → aucune régression à couvrir). Le total reste
 271 tests verts. Des tests seront ajoutés uniquement si un défaut runtime
 justifie une régression couvrante.
+
+> **Lot 4F.1** : 55 tests ajoutés (§16 session 15, §17 token performer 7,
+> §18 gate 10+, §19 enceinte 16, §20 sécurité) — total **326 tests** verts.
+> Voir `docs/bmad/14`.
 
 ## 17. Documentation
 

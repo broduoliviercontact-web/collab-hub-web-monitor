@@ -48,9 +48,11 @@ export function mountListenerSection({ mountAfter } = {}) {
     const snap = listener.getSnapshot();
     listener.setMuted(!snap.muted);
   }
+  // Lot 4F.1 : double-clic enceinte / bouton -20 dB -> atténuation -20 dB.
+  function onAttenuationToggle() { listener.toggleAttenuation(); }
   function onVolume(v) { listener.setVolume(v); }
 
-  wireListenerControls({ els, onPrimary, onMuteToggle, onVolume });
+  wireListenerControls({ els, onPrimary, onMuteToggle, onAttenuationToggle, onVolume });
 
   // Nettoyage non bloquant au déchargement (§15) : pas de fetch supplémentaire,
   // pas de log de token.
@@ -64,6 +66,8 @@ export function mountListenerSection({ mountAfter } = {}) {
     startAudio: () => listener.startAudio(),
     setVolume: (v) => listener.setVolume(v),
     setMuted: (b) => listener.setMuted(b),
+    setAttenuation: (b) => listener.setAttenuation(b),
+    toggleAttenuation: () => listener.toggleAttenuation(),
     stop: () => listener.stop(),
     destroy: () => { unsub(); window.removeEventListener('beforeunload', onUnload); return listener.destroy(); },
   };

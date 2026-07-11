@@ -20,6 +20,8 @@ import { readFileSync } from 'node:fs';
 const FORBIDDEN_PATTERNS = [
   { re: /VITE_LIVEKIT_API_KEY\b/, msg: 'VITE_LIVEKIT_API_KEY interdit (secret jamais VITE_-préfixé)', codeOnly: true },
   { re: /VITE_LIVEKIT_API_SECRET\b/, msg: 'VITE_LIVEKIT_API_SECRET interdit (secret jamais VITE_-préfixé)', codeOnly: true },
+  // Lot 4F.1 : secret de signature session jamais préfixé VITE_ (cookie serveur).
+  { re: /VITE_CONTROL_ROOM_SESSION_SECRET\b/, msg: 'VITE_CONTROL_ROOM_SESSION_SECRET interdit (secret jamais VITE_-préfixé)', codeOnly: true },
   // JWT littéral commité : header.payload.signature, base64url. Partout (y compris .md).
   { re: /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/, msg: 'JWT littéral commité interdit' },
 ];

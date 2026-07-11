@@ -370,30 +370,43 @@ Cloud, indépendamment du flux métadonnées Collab-Hub qui reste inchangé.
   mute, reconnexion native), adaptateur `<audio>`, section publique additive
   « DIRECT AUDIO ». **Gâte par `VITE_LIVEKIT_ENABLED`** via import dynamique :
   tant que la variable est absente/`false`, le SDK `livekit-client` est éliminé du
-  build (aucun chargement).
+  build (aucun chargement). **Lot 4F.1** : bouton enceinte accessible 🔊/🔉/🔇
+  (clic = mute, double-clic = atténuation −20 dB, bouton secondaire « −20 dB »
+  pour clavier/tactile) ; le slider reste le volume utilisateur.
 - **Control Room performer** (`src/control-room/`, Lot 4E) — route `/control-room`
   (shell `control-room.html`, entrée dynamique `controlRoomPage.js`) : sélection
   de source (BlackHole/Loopback/interface), permission micro, capture, VU-mètre,
-  master gain, diffusion LiveKit (mot de passe performer, ON AIR, reconnexion),
-  erreurs FR, arrêt/nettoyage. Réutilise le moteur audio (Lot 4B) et le publisher
-  (Lot 4C) sans les dupliquer. **Aucune valeur secrète côté navigateur** (le mot
-  de passe est un paramètre transmis à l'endpoint, jamais stocké ni reflété ;
-  token en mémoire uniquement). Le chunk `livekit-client` n'est chargé **que** sur
-  cette route.
+  master gain, diffusion LiveKit (ON AIR, reconnexion), erreurs FR, arrêt/nettoyage.
+  Réutilise le moteur audio (Lot 4B) et le publisher (Lot 4C) sans les dupliquer.
+  **Aucune valeur secrète côté navigateur** (token en mémoire uniquement). Le chunk
+  `livekit-client` n'est chargé **que** sur cette route. **Lot 4F.1** : accès
+  protégé par **session serveur signée** — écran de login minimal avant tout
+  contrôle (gate page ~16 ko sans `livekit-client`) ; mot de passe demandé une
+  seule fois, cookie `control_room_session` (HMAC-SHA256, 2 h, HttpOnly,
+  SameSite=Strict, Secure en production) ; le token performer vérifie le cookie
+  (pas de second mot de passe). Nouvelle variable serveur
+  `CONTROL_ROOM_SESSION_SECRET` (jamais `VITE_`).
 
 Détails et configuration Vercel : `docs/bmad/10-livekit-token-and-publisher.md`,
-`docs/bmad/11-livekit-public-listener.md`, `docs/bmad/12-control-room-performer.md`
-et `docs/bmad/13-livekit-stabilization-and-release.md`.
+`docs/bmad/11-livekit-public-listener.md`, `docs/bmad/12-control-room-performer.md`,
+`docs/bmad/13-livekit-stabilization-and-release.md` et
+`docs/bmad/14-control-room-session-and-listener-attenuation.md`.
 
 **Statut release** : la couche audio est **activée en production**
 (`VITE_LIVEKIT_ENABLED=true`), route `/control-room` en ligne. L'édition
 **v1.1.0 « Live Audio Edition »** est **préparée** (bump version, docs, package,
 CI) avec validation **automatisée + HTTP production** verte et **aucun défaut
 de code observé**. Les **tests runtime physiques** (Ableton+BlackHole, écoute
-réelle, Chrome/Safari/mobile, reconnexion réseau, devicechange, qualité audio)
+réelle, Chrome/Safari/mobile, reconnexion réseau, devicechange, qualité audio,
+**login/logout/expiration session Control Room**, **bouton enceinte + −20 dB**)
 restent **à valider manuellement** avant publication « latest stable » — voir la
-checklist GO/NO-GO dans `docs/bmad/13`. La release stable actuelle reste
-**v1.0.1** tant que `v1.1.0` n'est pas taggée.
+checklist GO/NO-GO dans `docs/bmad/13` et `docs/bmad/14`. La release stable
+actuelle reste **v1.0.1** tant que `v1.1.0` n'est pas taggée.
+
+> **Lot 4F.1 — action requise [MANUEL]** : ajouter `CONTROL_ROOM_SESSION_SECRET`
+> (secret de signature HMAC, jamais `VITE_`, distinct de toute autre variable)
+> dans Vercel **Production + Preview**, puis redéployer. Sans cette variable,
+> le login Control Room renvoie 503 et le token performer est refusé.
 
 ## Licence
 

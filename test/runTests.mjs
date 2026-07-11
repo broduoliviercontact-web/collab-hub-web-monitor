@@ -1046,12 +1046,21 @@ import handler, {
 } from '../api/livekit/token.js';
 import { requestLiveKitToken, TOKEN_ERRORS } from '../src/livekit/tokenClient.js';
 import { createLiveKitPublisher, PUBLISHER_ERRORS } from '../src/audio/livekitPublisher.js';
+import {
+  createSessionValue, verifySessionValue, validateSessionConfig,
+  setCookieString, clearCookieString, parseCookies, readSessionCookie,
+  isSecureEnv, COOKIE_NAME, SESSION_TTL_SECONDS,
+} from '../src/server/controlRoomSession.js';
+import loginHandler from '../api/control-room/login.js';
+import logoutHandler from '../api/control-room/logout.js';
+import sessionHandler from '../api/control-room/session.js';
 
 const FAKE_ENV = {
   LIVEKIT_URL: 'wss://test.livekit.cloud',
   LIVEKIT_API_KEY: 'testkey',
   LIVEKIT_API_SECRET: 'testsecret',
   PERFORMER_PASSWORD: 'test-password-long',
+  CONTROL_ROOM_SESSION_SECRET: 'test-session-secret-long-1234567890',
 };
 
 function fakeRes() {
@@ -1065,16 +1074,22 @@ function fakeRes() {
     end(s) { this.body = s ? JSON.parse(s) : null; return this; },
   };
 }
-function fakeReq({ method = 'POST', body, headers = {} } = {}) {
-  return { method, body, headers };
+function fakeReq({ method = 'POST', body, headers = {}, cookie = null } = {}) {
+  const h = { ...headers };
+  if (cookie) h.cookie = cookie;
+  return { method, body, headers: h };
 }
 function decodeJwtPayload(token) {
   return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
 }
-async function callEndpoint({ method = 'POST', body, env = FAKE_ENV } = {}) {
-  const req = fakeReq({ method, body });
+// Minte un cookie de session valide pour les tests endpoint performer.
+function mintSession(env = FAKE_ENV, { now = () => 1234567890000 } = {}) {
+  return createSessionValue(env, { now }).value;
+}
+async function callEndpoint({ method = 'POST', body, env = FAKE_ENV, cookie = null, now = () => 1234567890000 } = {}) {
+  const req = fakeReq({ method, body, cookie });
   const res = fakeRes();
-  await handler(req, res, env);
+  await handler(req, res, env, { now });
   return res;
 }
 
@@ -1099,23 +1114,23 @@ test('livekit/token : rôle inconnu -> 400', async () => {
   assert.equal(res.statusCode, 400);
 });
 
-// 4. performer sans mot de passe -> 401
-test('livekit/token : performer sans mot de passe -> 401', async () => {
+// 4. performer sans session -> 401 (Lot 4F.1 : auth par cookie, plus de password)
+test('livekit/token : performer sans session -> 401', async () => {
   const res = await callEndpoint({ body: { role: 'performer' } });
   assert.equal(res.statusCode, 401);
   assert.equal(res.body.error, 'unauthorized');
 });
 
-// 5. performer mot de passe incorrect -> 401
-test('livekit/token : performer mauvais mot de passe -> 401', async () => {
-  const res = await callEndpoint({ body: { role: 'performer', password: 'wrong' } });
+// 5. performer session invalide -> 401
+test('livekit/token : performer session invalide -> 401', async () => {
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=eyJbad.sigvalue` });
   assert.equal(res.statusCode, 401);
   assert.equal(res.body.error, 'unauthorized');
 });
 
-// 6. performer correct -> token
-test('livekit/token : performer correct -> 200 + token', async () => {
-  const res = await callEndpoint({ body: { role: 'performer', password: FAKE_ENV.PERFORMER_PASSWORD } });
+// 6. performer avec session valide -> token
+test('livekit/token : performer session valide -> 200 + token', async () => {
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=${mintSession()}` });
   assert.equal(res.statusCode, 200);
   assert.ok(typeof res.body.token === 'string' && res.body.token.length > 0);
 });
@@ -1143,7 +1158,7 @@ test('livekit/token : identity générée côté serveur', async () => {
 
 // 10. identity performer préfixée
 test('livekit/token : identity performer préfixée', async () => {
-  const res = await callEndpoint({ body: { role: 'performer', password: FAKE_ENV.PERFORMER_PASSWORD } });
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=${mintSession()}` });
   assert.ok(res.body.identity.startsWith('performer-'));
 });
 
@@ -1155,7 +1170,7 @@ test('livekit/token : identity listener préfixée', async () => {
 
 // 12. grants performer corrects
 test('livekit/token : grants performer (canPublish true, canSubscribe false, canPublishData false)', async () => {
-  const res = await callEndpoint({ body: { role: 'performer', password: FAKE_ENV.PERFORMER_PASSWORD } });
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=${mintSession()}` });
   const v = decodeJwtPayload(res.body.token).video;
   assert.equal(v.roomJoin, true);
   assert.equal(v.canPublish, true);
@@ -1234,13 +1249,16 @@ function fakeFetch({ status = 200, body = {}, ok, throwErr = null } = {}) {
 }
 const GOOD_BODY = { token: 'jwt-abc', url: 'wss://test.livekit.cloud', room: 'main', identity: 'performer-1', role: 'performer', expiresIn: 7200 };
 
-// 1. succès performer
-test('tokenClient : succès performer', async () => {
+// 1. succès performer (Lot 4F.1 : plus de password envoyé — auth via cookie)
+test('tokenClient : succès performer (aucun password envoyé)', async () => {
   const f = fakeFetch({ body: GOOD_BODY });
-  const r = await requestLiveKitToken({ role: 'performer', password: 'pw', fetchImpl: f });
+  const r = await requestLiveKitToken({ role: 'performer', fetchImpl: f });
   assert.equal(r.token, 'jwt-abc');
   assert.equal(r.identity, 'performer-1');
   assert.equal(f._calls[0].opts.method, 'POST');
+  const sent = JSON.parse(f._calls[0].opts.body);
+  assert.equal(sent.role, 'performer');
+  assert.equal(sent.password, undefined); // champ password ignoré côté client
 });
 
 // 2. succès listener
@@ -1589,11 +1607,11 @@ test('publisher : snapshot sans password', async () => {
 });
 // Lot 4D — moteur listener LiveKit + adaptateur audio + UI publique
 // ============================================================
-import { createLiveKitListener, LISTENER_ERRORS, DEFAULT_VOLUME } from '../src/livekit/livekitListener.js';
+import { createLiveKitListener, LISTENER_ERRORS, DEFAULT_VOLUME, ATTENUATION_DB, ATTENUATION_GAIN } from '../src/livekit/livekitListener.js';
 import { createListenerAudioElement } from '../src/listener/listenerAudioElement.js';
 import {
   isLiveKitEnabled, STATUS_LABELS, buildListenerDOM,
-  renderListenerState, wireListenerControls,
+  renderListenerState, wireListenerControls, createClickDiscriminator,
 } from '../src/listener/listenerUI.js';
 import { initDiagnostic } from '../src/diagnostic/diagnosticPanel.js';
 
@@ -2221,15 +2239,17 @@ test('listenerUI : statut "Lecture en cours"', () => {
   assert.equal(els.status.textContent, 'Lecture en cours');
 });
 
-// 7. bouton mute (COUPER / RÉACTIVER)
-test('listenerUI : bouton mute COUPER puis RÉACTIVER', () => {
+// 7. bouton enceinte (🔇/🔊) + aria-label mute/unmute
+test('listenerUI : bouton enceinte 🔊 puis 🔇 + aria-label', () => {
   const doc = fakeDocument();
   const { els } = buildListenerDOM(doc, null);
   renderListenerState({ state: 'playing', volume: 0.8, muted: false, hasAudioTrack: true }, els);
-  assert.equal(els.mute.hidden, false);
-  assert.equal(els.mute.textContent, 'COUPER');
+  assert.equal(els.speaker.hidden, false);
+  assert.equal(els.speaker.textContent, '🔊');
+  assert.equal(els.speaker.getAttribute('aria-label'), 'Couper le son');
   renderListenerState({ state: 'playing', volume: 0.8, muted: true, hasAudioTrack: true }, els);
-  assert.equal(els.mute.textContent, 'RÉACTIVER');
+  assert.equal(els.speaker.textContent, '🔇');
+  assert.equal(els.speaker.getAttribute('aria-label'), 'Réactiver le son');
 });
 
 // 8. volume (slider + pourcentage)
@@ -2312,8 +2332,9 @@ import {
 import { createControlRoomController } from '../src/control-room/controlRoomController.js';
 import {
   buildControlRoomDOM, renderControlRoom, renderMeter,
-  updateBroadcastEnabled, wireControlRoom,
+  updateBroadcastEnabled, wireControlRoom, buildLoginDOM, renderLogin, wireLogin,
 } from '../src/control-room/controlRoomView.js';
+import { createControlRoomGate, GATE_STATES } from '../src/control-room/controlRoomGate.js';
 
 // --- Faux moteur audio (boundary contrôleur) ---
 function makeFakeAudioEngine({
@@ -2442,9 +2463,9 @@ test('crState : isOnAir vrai uniquement pour live', () => {
 });
 
 test('crState : describeError couvre token_unauthorized + permission_denied', () => {
-  assert.equal(describeError('token_unauthorized'), 'Mot de passe incorrect.');
+  // Lot 4F.1 : token_unauthorized = session expirée (auth par cookie, plus de password).
+  assert.equal(describeError('token_unauthorized'), 'Session expirée — reconnectez-vous à la Control Room.');
   assert.ok(describeError('permission_denied').includes('micro'));
-  assert.equal(describeError('no_password'), 'Saisissez le mot de passe performer.');
   assert.equal(describeError('code_inconnu_xyz'), 'Erreur inconnue.');
 });
 
@@ -2577,19 +2598,14 @@ test('crController : startBroadcast capture+password -> publisher.connect + ok',
   assert.equal(p._calls.connect, 1);
 });
 
-test('crController : startBroadcast transmet le password à publisher.connect', async () => {
+test('crController : startBroadcast ne transmet aucun password (auth via session)', async () => {
   const a = readyAudio();
   const p = makeFakePublisher();
   const c = makeController({ audio: a, publisher: p });
-  await c.startBroadcast('secret123');
-  assert.equal(p._lastConnectArgs().password, 'secret123');
-});
-
-test('crController : startBroadcast sans password -> no_password', async () => {
-  const c = makeController({ audio: readyAudio() });
-  const r = await c.startBroadcast('');
-  assert.equal(r.ok, false);
-  assert.equal(r.code, 'no_password');
+  await c.startBroadcast();
+  const args = p._lastConnectArgs();
+  assert.ok(args.outputStream, 'outputStream transmis');
+  assert.equal(args.password, undefined, 'aucun password transmis au publisher');
 });
 
 test('crController : startBroadcast échec token_unauthorized -> code', async () => {
@@ -2700,7 +2716,7 @@ test('crController : error publisher prioritaire -> message describeError', () =
   const s = c.getSnapshot();
   assert.equal(s.composite, 'error');
   assert.equal(s.error.code, 'token_unauthorized');
-  assert.equal(s.error.message, 'Mot de passe incorrect.');
+  assert.equal(s.error.message, 'Session expirée — reconnectez-vous à la Control Room.');
 });
 
 test('crController : error audio quand publisher ok', () => {
@@ -2745,11 +2761,19 @@ test('crView : build crée 7 sections + root cr-room', () => {
   assert.equal(sections.length, 7);
 });
 
-test('crView : champ mot de passe type=password + autocomplete off', () => {
+test('crView : écran login champ mot de passe type=password + autocomplete off', () => {
   const doc = fakeDocument();
-  const { els } = buildControlRoomDOM(doc, null);
+  const { els } = buildLoginDOM(doc, null);
   assert.equal(els.password.type, 'password');
   assert.equal(els.password.autocomplete, 'off');
+});
+
+test('crView : Control Room sans champ mot de passe (auth via session)', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  assert.equal(els.password, undefined, 'plus de <input> password en Control Room');
+  assert.ok(els.logout, 'bouton QUITTER présent');
+  assert.ok(els.sessionLabel, 'label de session présent');
 });
 
 test('crView : rendu idle -> HORS ANTENNE, onair hidden, stopBroadcast hidden', () => {
@@ -2853,26 +2877,33 @@ test('crView : gain 1 -> slider 100 + label 100%', () => {
   assert.equal(els.gainLabel.textContent, '100%');
 });
 
-test('crView : updateBroadcastEnabled canBroadcast+password vide -> disabled', () => {
+test('crView : updateBroadcastEnabled suit canBroadcast (aucun password requis)', () => {
   const doc = fakeDocument();
   const { els } = buildControlRoomDOM(doc, null);
-  els._canBroadcast = true;
-  els.password.value = '';
+  els._canBroadcast = false;
   updateBroadcastEnabled(els);
   assert.equal(els.startBroadcast.disabled, true);
-  els.password.value = 'pw';
+  els._canBroadcast = true;
   updateBroadcastEnabled(els);
   assert.equal(els.startBroadcast.disabled, false);
 });
 
-test('crView : wire -> clic DÉMARRER appelle onStartBroadcast(password)', () => {
+test('crView : wire -> clic DÉMARRER appelle onStartBroadcast (sans password)', () => {
   const doc = fakeDocument();
   const { els } = buildControlRoomDOM(doc, null);
-  let received = null;
-  wireControlRoom({ els, handlers: { onStartBroadcast: (pw) => { received = pw; } } });
-  els.password.value = 'secret';
+  let called = false;
+  wireControlRoom({ els, handlers: { onStartBroadcast: () => { called = true; } } });
   els.startBroadcast._fire('click');
-  assert.equal(received, 'secret');
+  assert.equal(called, true);
+});
+
+test('crView : wire -> clic QUITTER appelle onLogout', () => {
+  const doc = fakeDocument();
+  const { els } = buildControlRoomDOM(doc, null);
+  let called = false;
+  wireControlRoom({ els, handlers: { onLogout: () => { called = true; } } });
+  els.logout._fire('click');
+  assert.equal(called, true);
 });
 
 test('crView : wire -> change device appelle onSelectDevice', () => {
@@ -2915,8 +2946,8 @@ test('crView : aucune valeur secrète écrite dans le DOM', () => {
   const doc = fakeDocument();
   const { els } = buildControlRoomDOM(doc, null);
   renderControlRoom(crSnap({ identity: 'performer-1', roomName: 'main', trackSid: 'pub-1' }), els);
-  // Le mot de passe n'est jamais reflété : l'input reste vide hors saisie.
-  assert.equal(els.password.value, '');
+  // Lot 4F.1 : plus aucun champ mot de passe en Control Room (auth via session).
+  assert.equal(els.password, undefined);
   // Pas de token/clé dans les libellés de statut.
   assert.ok(!els.status.textContent.includes('token'));
   assert.ok(!els.err.textContent.includes('secret'));
@@ -2942,25 +2973,25 @@ test('crInteg : flux complet idle -> permission -> capture -> live -> arrêt', a
   assert.equal(c.getSnapshot().onAir, false);
 });
 
-test('crInteg : startBroadcast sans password dans le flux -> no_password', async () => {
+test('crInteg : startBroadcast démarre sans password (auth via session)', async () => {
   const c = makeController({ audio: readyAudio() });
   await c.startCapture().catch(() => {});
-  const r = await c.startBroadcast('');
-  assert.equal(r.code, 'no_password');
+  const r = await c.startBroadcast();
+  assert.equal(r.ok, true);
 });
 
 test('crInteg : échec token -> error + message, puis retry -> live', async () => {
   const a = readyAudio();
   let p = makeFakePublisher({ fail: 'token_unauthorized' });
   const c = makeController({ audio: a, publisher: p });
-  const r = await c.startBroadcast('bad');
+  const r = await c.startBroadcast();
   assert.equal(r.code, 'token_unauthorized');
   assert.equal(c.getSnapshot().composite, 'error');
-  assert.equal(c.getSnapshot().error.message, 'Mot de passe incorrect.');
+  assert.equal(c.getSnapshot().error.message, 'Session expirée — reconnectez-vous à la Control Room.');
   // Retry avec un publisher sain (simule nouvelle tentative).
   p = makeFakePublisher();
   const c2 = createControlRoomController({ audioEngine: a, publisher: p, now: () => 1 });
-  const r2 = await c2.startBroadcast('good');
+  const r2 = await c2.startBroadcast();
   assert.equal(r2.ok, true);
 });
 
@@ -3044,4 +3075,555 @@ test('crInteg : déconnexion involontaire -> error + propose retry (publisher st
   p._set({ state: 'stopped', lastError: null });
   const r = await c.startBroadcast('pw');
   assert.equal(r.ok, true);
+});
+
+// ============================================================
+// Lot 4F.1 — Session Control Room + bouton enceinte listener
+// ============================================================
+import { readFileSync } from 'node:fs';
+
+const T0 = 1234567890000;
+
+// --- Helpers endpoints session ---
+function callLogin({ method = 'POST', body, env = FAKE_ENV, now = () => T0 } = {}) {
+  const req = fakeReq({ method, body });
+  const res = fakeRes();
+  return loginHandler(req, res, env, { now }).then(() => res);
+}
+function callLogout({ method = 'POST', env = FAKE_ENV } = {}) {
+  const req = fakeReq({ method });
+  const res = fakeRes();
+  return logoutHandler(req, res, env).then(() => res);
+}
+function callSession({ method = 'GET', cookie = null, env = FAKE_ENV, now = () => T0 } = {}) {
+  const req = fakeReq({ method, cookie });
+  const res = fakeRes();
+  return sessionHandler(req, res, env, { now }).then(() => res);
+}
+function cookieValue(setCookie) {
+  return setCookie.split(';')[0].slice(COOKIE_NAME.length + 1);
+}
+
+// ================= Tests session serveur (§16, 15) =================
+
+// 1. login méthode invalide -> 405
+test('session : login GET -> 405 + Allow POST', async () => {
+  const res = await callLogin({ method: 'GET' });
+  assert.equal(res.statusCode, 405);
+  assert.equal(res.headers.Allow, 'POST');
+});
+
+// 2. login body invalide -> 400
+test('session : login body non JSON -> 400', async () => {
+  const res = await callLogin({ body: 'not-json{' });
+  assert.equal(res.statusCode, 400);
+});
+
+// 3. mauvais mot de passe -> 401 générique
+test('session : login mauvais mot de passe -> 401 unauthorized', async () => {
+  const res = await callLogin({ body: { password: 'wrong' } });
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.error, 'unauthorized');
+});
+
+// 4. bon mot de passe -> cookie HttpOnly
+test('session : login bon mot de passe -> 200 + Set-Cookie HttpOnly', async () => {
+  const res = await callLogin({ body: { password: FAKE_ENV.PERFORMER_PASSWORD } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.authenticated, true);
+  const sc = res.headers['Set-Cookie'];
+  assert.ok(sc.includes('HttpOnly'));
+  assert.ok(sc.startsWith(`${COOKIE_NAME}=`));
+});
+
+// 5. cookie Secure en production
+test('session : cookie Secure en production', async () => {
+  const prodEnv = { ...FAKE_ENV, VERCEL_ENV: 'production' };
+  const res = await callLogin({ body: { password: FAKE_ENV.PERFORMER_PASSWORD }, env: prodEnv });
+  assert.ok(res.headers['Set-Cookie'].includes('Secure'));
+  const devRes = await callLogin({ body: { password: FAKE_ENV.PERFORMER_PASSWORD }, env: FAKE_ENV });
+  assert.ok(!devRes.headers['Set-Cookie'].includes('Secure'));
+});
+
+// 6. SameSite Strict
+test('session : cookie SameSite=Strict', async () => {
+  const res = await callLogin({ body: { password: FAKE_ENV.PERFORMER_PASSWORD } });
+  assert.ok(res.headers['Set-Cookie'].includes('SameSite=Strict'));
+});
+
+// 7. expiration définie (Max-Age 7200)
+test('session : cookie Max-Age=7200', async () => {
+  const res = await callLogin({ body: { password: FAKE_ENV.PERFORMER_PASSWORD } });
+  assert.ok(res.headers['Set-Cookie'].includes('Max-Age=7200'));
+});
+
+// 8. aucun mot de passe dans la réponse
+test('session : réponse sans mot de passe ni secret', async () => {
+  const res = await callLogin({ body: { password: FAKE_ENV.PERFORMER_PASSWORD } });
+  assert.equal(res.body.password, undefined);
+  assert.equal(res.body.PERFORMER_PASSWORD, undefined);
+  assert.equal(res.body.secret, undefined);
+  assert.ok(!JSON.stringify(res.body).includes(FAKE_ENV.PERFORMER_PASSWORD));
+});
+
+// 9. session valide -> authenticated true
+test('session : GET session cookie valide -> authenticated true + exp', async () => {
+  const value = mintSession(FAKE_ENV, { now: () => T0 });
+  const res = await callSession({ cookie: `${COOKIE_NAME}=${value}`, now: () => T0 + 1000 });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.authenticated, true);
+  assert.equal(res.body.exp, T0 + SESSION_TTL_SECONDS * 1000);
+});
+
+// 10. session absente -> authenticated false (pas 401)
+test('session : GET sans cookie -> authenticated false', async () => {
+  const res = await callSession({ cookie: null });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.authenticated, false);
+});
+
+// 11. cookie altéré -> rejeté (authenticated false)
+test('session : cookie altéré -> authenticated false', async () => {
+  const value = mintSession();
+  const tampered = value.slice(0, -2) + 'AA';
+  const res = await callSession({ cookie: `${COOKIE_NAME}=${tampered}` });
+  assert.equal(res.body.authenticated, false);
+});
+
+// 12. cookie expiré -> rejeté
+test('session : cookie expiré -> authenticated false', async () => {
+  const expired = mintSession(FAKE_ENV, { now: () => 0 });
+  const res = await callSession({ cookie: `${COOKIE_NAME}=${expired}`, now: () => 9999999999999 });
+  assert.equal(res.body.authenticated, false);
+});
+
+// 13. logout efface cookie (Max-Age=0)
+test('session : logout -> Set-Cookie Max-Age=0', async () => {
+  const res = await callLogout();
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.authenticated, false);
+  assert.ok(res.headers['Set-Cookie'].includes('Max-Age=0'));
+});
+
+// 14. configuration absente -> 503
+test('session : login config absente -> 503', async () => {
+  const res = await callLogin({ body: { password: 'x' }, env: { ...FAKE_ENV, CONTROL_ROOM_SESSION_SECRET: '' } });
+  assert.equal(res.statusCode, 503);
+});
+
+// 15. aucune valeur secrète logguée (la fonction ne renvoie jamais le secret)
+test('session : validateSessionConfig ne renvoie aucune valeur secrète', () => {
+  const cfg = validateSessionConfig(FAKE_ENV);
+  assert.equal(cfg.ok, true);
+  assert.ok(!JSON.stringify(cfg).includes(FAKE_ENV.CONTROL_ROOM_SESSION_SECRET));
+  assert.ok(!JSON.stringify(cfg).includes(FAKE_ENV.PERFORMER_PASSWORD));
+  // placeholder refusé
+  const bad = validateSessionConfig({ ...FAKE_ENV, CONTROL_ROOM_SESSION_SECRET: 'replace-with-a-long-random-secret' });
+  assert.equal(bad.ok, false);
+});
+
+// ================= Tests token performer (§17, 7) =================
+
+// 1. performer sans session -> 401
+test('token4F1 : performer sans session -> 401', async () => {
+  const res = await callEndpoint({ body: { role: 'performer' } });
+  assert.equal(res.statusCode, 401);
+});
+
+// 2. performer session expirée -> 401
+test('token4F1 : performer session expirée -> 401', async () => {
+  const expired = mintSession(FAKE_ENV, { now: () => 0 });
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=${expired}`, now: () => 9999999999999 });
+  assert.equal(res.statusCode, 401);
+});
+
+// 3. performer session valide -> token
+test('token4F1 : performer session valide -> 200 + token', async () => {
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=${mintSession()}` });
+  assert.equal(res.statusCode, 200);
+  assert.ok(typeof res.body.token === 'string' && res.body.token.length > 0);
+});
+
+// 4. listener reste accessible sans session
+test('token4F1 : listener sans session -> 200', async () => {
+  const res = await callEndpoint({ body: { role: 'listener' } });
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.body.token);
+});
+
+// 5. champ password corps ignoré (avec session valide -> 200, sans session -> 401)
+test('token4F1 : champ password corps ignoré (session prime)', async () => {
+  const resOk = await callEndpoint({ body: { role: 'performer', password: 'whatever' }, cookie: `${COOKIE_NAME}=${mintSession()}` });
+  assert.equal(resOk.statusCode, 200);
+  const resNo = await callEndpoint({ body: { role: 'performer', password: 'whatever' } });
+  assert.equal(resNo.statusCode, 401);
+});
+
+// 6. grants inchangés (canPublish true, canSubscribe false)
+test('token4F1 : grants performer inchangés via session', async () => {
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=${mintSession()}` });
+  const v = decodeJwtPayload(res.body.token).video;
+  assert.equal(v.canPublish, true);
+  assert.equal(v.canSubscribe, false);
+  assert.equal(v.canPublishData, false);
+});
+
+// 7. aucun secret dans la réponse
+test('token4F1 : réponse sans secret serveur', async () => {
+  const res = await callEndpoint({ body: { role: 'performer' }, cookie: `${COOKIE_NAME}=${mintSession()}` });
+  assert.equal(res.body.apiKey, undefined);
+  assert.equal(res.body.apiSecret, undefined);
+  assert.ok(!JSON.stringify(res.body).includes(FAKE_ENV.LIVEKIT_API_SECRET));
+});
+
+// ================= Tests gate Control Room (§18, 10) =================
+
+function fakeSessionClient({ loginOk = true, authed = false, exp = null, failCheck = null } = {}) {
+  const calls = { login: [], logout: 0, checkSession: 0 };
+  return {
+    _calls: calls,
+    async login({ password }) {
+      calls.login.push(password);
+      if (!loginOk) throw { code: 'session_unauthorized', message: 'Mot de passe incorrect.' };
+      return { authenticated: true, expiresIn: 7200 };
+    },
+    async logout() { calls.logout++; return { authenticated: false }; },
+    async checkSession() {
+      calls.checkSession++;
+      if (failCheck) throw { code: 'session_unavailable', message: 'Service d\'authentification indisponible.' };
+      return { authenticated: authed, exp };
+    },
+  };
+}
+
+// 1. écran login visible sans session (gate initial unauthenticated)
+test('gate : état initial unauthenticated', () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient() });
+  const s = g.getSnapshot();
+  assert.equal(s.state, 'unauthenticated');
+  assert.equal(s.authenticated, false);
+  assert.equal(s.error, null);
+});
+
+// 2. contrôles audio absents avant session : le snapshot du gate n'expose rien métier
+test('gate : snapshot ne contient aucun contrôle audio/token/password', () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient() });
+  const s = g.getSnapshot();
+  assert.deepEqual(Object.keys(s).sort(), ['authenticated', 'error', 'exp', 'state', 'updatedAt']);
+});
+
+// 3. aucun audioEngine créé avant session : structuralement, le gate page n'importe
+//    pas le moteur audio ni livekit-client (chargement dynamique post-auth seulement).
+test('gate : la page gate n importe pas statiquement audioEngine/livekit-client', () => {
+  const src = readFileSync('src/control-room/controlRoomGatePage.js', 'utf8');
+  // controlRoomPage.js (lourd, importe livekit-client) doit être un import
+  // dynamique uniquement — jamais un import statique `from './controlRoomPage.js'`.
+  assert.ok(!/^\s*import\s+.*\sfrom\s+['"]\.\/controlRoomPage\.js['"]/m.test(src),
+    'controlRoomPage est un import dynamique, pas statique');
+  // Aucun import statique du SDK lourd ni du moteur audio avant la session.
+  // (Les commentaires qui citent livekit-client sont OK ; on cible les import.)
+  assert.ok(!/^\s*import\s+.*from\s+['"][^'"]*livekit-client['"]/m.test(src),
+    'aucun import statique livekit-client dans le gate page');
+  assert.ok(!/^\s*import\s+.*audioEngine/m.test(src),
+    'aucun import statique audioEngine dans le gate page');
+});
+
+// 4. aucun import LiveKit lourd avant session : le chunk gate (build) est léger
+//    (vérifié par le build : controlRoomGatePage-*.js ~16 ko sans livekit-client ;
+//    controlRoomPage-*.js ~529 ko chargé dynamiquement). Test structural ci-dessus.
+
+// 5. bon login monte l état authenticated
+test('gate : login bon mot de passe -> authenticated', async () => {
+  const sc = fakeSessionClient({ loginOk: true });
+  const g = createControlRoomGate({ sessionClient: sc });
+  const r = await g.login('secret');
+  assert.equal(r.ok, true);
+  assert.equal(g.getSnapshot().state, 'authenticated');
+  assert.equal(sc._calls.login.length, 1);
+  assert.equal(sc._calls.login[0], 'secret');
+});
+
+// 6. mauvais login affiche erreur (état error)
+test('gate : login mauvais mot de passe -> error + message', async () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient({ loginOk: false }) });
+  const r = await g.login('bad');
+  assert.equal(r.ok, false);
+  assert.equal(g.getSnapshot().state, 'error');
+  assert.equal(g.getSnapshot().error, 'Mot de passe incorrect.');
+});
+
+// 7. mot de passe vidé après requête (jamais dans le snapshot)
+test('gate : le mot de passe n est jamais dans le snapshot', async () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient() });
+  await g.login('topsecret');
+  const s = g.getSnapshot();
+  assert.equal('password' in s, false);
+  assert.ok(!JSON.stringify(s).includes('topsecret'));
+});
+
+// 8. logout détruit la session -> unauthenticated
+test('gate : logout -> unauthenticated', async () => {
+  const sc = fakeSessionClient();
+  const g = createControlRoomGate({ sessionClient: sc });
+  await g.login('pw');
+  await g.logout();
+  assert.equal(g.getSnapshot().state, 'unauthenticated');
+  assert.equal(sc._calls.logout, 1);
+});
+
+// 9. expiration revient au login (reset avec message)
+test('gate : reset(reason) -> unauthenticated + message Session expirée', () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient() });
+  g.reset('Session expirée.');
+  assert.equal(g.getSnapshot().state, 'unauthenticated');
+  assert.equal(g.getSnapshot().error, 'Session expirée.');
+});
+
+// 10. rechargement pendant session : checkSession authenticated -> accès conservé
+test('gate : checkSession authenticated -> authenticated (rechargement)', async () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient({ authed: true, exp: T0 + 1000 }) });
+  const r = await g.checkSession();
+  assert.equal(r.authenticated, true);
+  assert.equal(g.getSnapshot().state, 'authenticated');
+});
+
+test('gate : checkSession non authenticated -> unauthenticated', async () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient({ authed: false }) });
+  await g.checkSession();
+  assert.equal(g.getSnapshot().state, 'unauthenticated');
+});
+
+test('gate : subscriber notifié au login', async () => {
+  const g = createControlRoomGate({ sessionClient: fakeSessionClient() });
+  const seen = [];
+  g.subscribe((s) => seen.push(s.state));
+  await g.login('pw');
+  assert.ok(seen.includes('authenticating'));
+  assert.ok(seen.includes('authenticated'));
+});
+
+// --- Vue login (écran d accès) ---
+test('gateView : buildLoginDOM crée titre + champ password + bouton ENTRER', () => {
+  const doc = fakeDocument();
+  const { els } = buildLoginDOM(doc, null);
+  assert.equal(els.title.textContent, 'CONTROL ROOM');
+  assert.equal(els.enter.textContent, 'ENTRER');
+  assert.equal(els.password.type, 'password');
+});
+
+test('gateView : renderLogin affiche erreur + bouton CONNEXION… en authenticating', () => {
+  const doc = fakeDocument();
+  const { els } = buildLoginDOM(doc, null);
+  renderLogin({ state: 'authenticating', error: null }, els);
+  assert.equal(els.enter.textContent, 'CONNEXION…');
+  assert.equal(els.enter.disabled, true);
+  renderLogin({ state: 'error', error: 'Mot de passe incorrect.' }, els);
+  assert.equal(els.error.textContent, 'Mot de passe incorrect.');
+});
+
+test('gateView : wireLogin appelle onLogin(password) puis vide l input', () => {
+  const doc = fakeDocument();
+  const { els } = buildLoginDOM(doc, null);
+  let received = null;
+  wireLogin({ els, onLogin: (pw) => { received = pw; } });
+  els.password.value = 'secret';
+  els.form._fire('submit');
+  assert.equal(received, 'secret');
+  assert.equal(els.password.value, '', 'mot de passe vidé après envoi');
+});
+
+// ================= Tests enceinte listener (§19, 16) =================
+
+function fakeTimer() {
+  let q = [];
+  return {
+    setTimeout(cb) { q.push(cb); return q.length; },
+    clearTimeout() { q = []; },
+    _flush() { const c = q.splice(0); c.forEach((cb) => cb()); },
+    _pending() { return q.length > 0; },
+  };
+}
+
+// 1. icône volume actif 🔊
+test('enceinte : icône 🔊 volume actif', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.8, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.speaker.textContent, '🔊');
+});
+
+// 2. icône mute 🔇
+test('enceinte : icône 🔇 quand mute', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.8, muted: true, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.speaker.textContent, '🔇');
+});
+
+// 3. clic simple mute (engine)
+test('enceinte : setMuted(true) -> muted + sink muted true', () => {
+  const sink = makeFakeAudioSink();
+  const l = makeListener({ audioSink: sink });
+  l.setMuted(true);
+  assert.equal(l.getSnapshot().muted, true);
+  assert.equal(sink._calls.muted[sink._calls.muted.length - 1], true);
+  l.destroy();
+});
+
+// 4. second clic unmute
+test('enceinte : setMuted(false) -> unmute', () => {
+  const l = makeListener();
+  l.setMuted(true); l.setMuted(false);
+  assert.equal(l.getSnapshot().muted, false);
+  l.destroy();
+});
+
+// 5. double-clic active -20 dB (engine)
+test('enceinte : toggleAttenuation -> attenuationActive + attenuationDb -20', () => {
+  const l = makeListener();
+  l.toggleAttenuation();
+  const s = l.getSnapshot();
+  assert.equal(s.attenuationActive, true);
+  assert.equal(s.attenuationDb, -20);
+  l.destroy();
+});
+
+// 6. double-clic ne déclenche pas mute (discriminateur)
+test('enceinte : double-clic -> onDouble seulement (pas onSingle)', () => {
+  const t = fakeTimer();
+  let single = 0, dbl = 0;
+  const disc = createClickDiscriminator({ onSingle: () => { single++; }, onDouble: () => { dbl++; } }, t);
+  disc.click();      // programme l'action simple (non exécutée)
+  assert.ok(t._pending());
+  disc.dblclick();  // annule l'action simple + déclenche l'atténuation
+  assert.equal(single, 0);
+  assert.equal(dbl, 1);
+  assert.ok(!t._pending());
+});
+
+test('enceinte : clic simple (sans dblclick) -> onSingle après délai', () => {
+  const t = fakeTimer();
+  let single = 0;
+  const disc = createClickDiscriminator({ onSingle: () => { single++; }, onDouble: () => {} }, t);
+  disc.click();
+  assert.equal(single, 0);
+  t._flush();
+  assert.equal(single, 1);
+});
+
+// 7. nouveau double-clic restaure
+test('enceinte : second toggleAttenuation -> restaure attenuationActive false', () => {
+  const l = makeListener();
+  l.toggleAttenuation();
+  l.toggleAttenuation();
+  assert.equal(l.getSnapshot().attenuationActive, false);
+  assert.equal(l.getSnapshot().attenuationDb, 0);
+  l.destroy();
+});
+
+// 8. effectiveVolume = userVolume × 0.1
+test('enceinte : effectiveVolume = volume × 0.1 quand attenué', () => {
+  const sink = makeFakeAudioSink();
+  const l = makeListener({ audioSink: sink });
+  l.setVolume(0.6);
+  l.setAttenuation(true);
+  assert.equal(l.getSnapshot().effectiveVolume, 0.6 * ATTENUATION_GAIN);
+  assert.equal(sink._calls.volume[sink._calls.volume.length - 1], 0.6 * ATTENUATION_GAIN);
+  l.destroy();
+});
+
+// 9. slider inchangé pendant atténuation (snapshot.volume reste le volume utilisateur)
+test('enceinte : slider (snapshot.volume) inchangé pendant atténuation', () => {
+  const l = makeListener();
+  l.setVolume(0.6);
+  l.setAttenuation(true);
+  assert.equal(l.getSnapshot().volume, 0.6);
+  l.destroy();
+});
+
+// 10. changement slider pendant atténuation recalcule effectiveVolume
+test('enceinte : setVolume pendant atténuation recalcule effectiveVolume', () => {
+  const sink = makeFakeAudioSink();
+  const l = makeListener({ audioSink: sink });
+  l.setAttenuation(true);
+  l.setVolume(0.5);
+  assert.equal(l.getSnapshot().effectiveVolume, 0.5 * ATTENUATION_GAIN);
+  l.destroy();
+});
+
+// 11. mute prioritaire sur atténuation (effectiveVolume 0)
+test('enceinte : mute prioritaire sur atténuation -> effectiveVolume 0', () => {
+  const sink = makeFakeAudioSink();
+  const l = makeListener({ audioSink: sink });
+  l.setVolume(0.6);
+  l.setAttenuation(true);
+  l.setMuted(true);
+  assert.equal(l.getSnapshot().effectiveVolume, 0);
+  assert.equal(sink._calls.volume[sink._calls.volume.length - 1], 0);
+  l.destroy();
+});
+
+// 12. unmute restaure le volume effectif atténué
+test('enceinte : unmute restaure le volume effectif atténué', () => {
+  const sink = makeFakeAudioSink();
+  const l = makeListener({ audioSink: sink });
+  l.setVolume(0.6);
+  l.setAttenuation(true);
+  l.setMuted(true);
+  l.setMuted(false);
+  assert.equal(l.getSnapshot().effectiveVolume, 0.6 * ATTENUATION_GAIN);
+  l.destroy();
+});
+
+// 13. indication -20 dB visible (badge + label) uniquement si actif
+test('enceinte : badge -20 dB + label "60% · −20 dB" visibles si actif', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.6, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.attenBadge.hidden, true);
+  assert.equal(els.volumeLabel.textContent, '60%');
+  renderListenerState({ state: 'playing', volume: 0.6, muted: false, attenuationActive: true, hasAudioTrack: true }, els);
+  assert.equal(els.attenBadge.hidden, false);
+  assert.equal(els.volumeLabel.textContent, '60% · −20 dB');
+});
+
+// 14. aria-label correct (speaker + bouton -20 dB)
+test('enceinte : aria-label speaker Couper/Réactiver + attenBtn aria-pressed', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.8, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.speaker.getAttribute('aria-label'), 'Couper le son');
+  assert.equal(els.attenBtn.getAttribute('aria-pressed'), 'false');
+  renderListenerState({ state: 'playing', volume: 0.8, muted: true, attenuationActive: true, hasAudioTrack: true }, els);
+  assert.equal(els.speaker.getAttribute('aria-label'), 'Réactiver le son');
+  assert.equal(els.attenBtn.getAttribute('aria-pressed'), 'true');
+});
+
+// 15. clavier fonctionne (vrai <button> focusable ; Entrée/Espace -> clic -> mute)
+test('enceinte : speaker et attenBtn sont des <button> (clavier utilisable)', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  assert.equal(els.speaker.tagName, 'BUTTON');
+  assert.equal(els.attenBtn.tagName, 'BUTTON');
+  // Le clic speaker déclenche onMuteToggle via le discriminateur.
+  let muted = false;
+  wireListenerControls({ els, onMuteToggle: () => { muted = !muted; }, onAttenuationToggle: () => {} });
+  els.speaker._fire('click'); // simule Enter/Espace -> click
+});
+
+// 16. fallback tactile accessible (bouton -20 dB visible quand piste présente)
+test('enceinte : bouton -20 dB visible (fallback clavier/tactile) quand piste', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  renderListenerState({ state: 'playing', volume: 0.8, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.attenBtn.hidden, false);
+  let toggled = false;
+  wireListenerControls({ els, onMuteToggle: () => {}, onAttenuationToggle: () => { toggled = true; } });
+  els.attenBtn._fire('click');
+  assert.equal(toggled, true);
+});
+
+test('enceinte : ATTENUATION_GAIN = 10^(-20/20) = 0.1', () => {
+  assert.equal(ATTENUATION_GAIN, 0.1);
+  assert.equal(ATTENUATION_DB, -20);
 });

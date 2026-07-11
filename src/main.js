@@ -1,16 +1,15 @@
-// Point d'entrée unique (Lot 4E) : routeur single-entry sur le pathname.
-// - /control-room -> Control Room performer (import dynamique : le SDK
-//   livekit-client n'est chargé QUE sur cette route, jamais sur la page publique).
-// - tout le reste -> page publique (import statique, bundle principal, pas de
-//   régression vs Lot 4D). Vercel re écrit /control-room vers /index.html
-//   (vercel.json) ; le routage côté client affiche ensuite la bonne page.
+// Point d'entrée unique (Lot 4E / 4F.1) : routeur single-entry sur le pathname.
+// - /control-room -> gate Control Room (import dynamique : écran de login léger,
+//   aucun SDK livekit-client avant authentification). Le SDK lourd + le moteur
+//   audio ne sont chargés qu'après login valide (controlRoomPage.js).
+// - tout le reste -> page publique (import statique, bundle principal).
 import { mountPublicPage } from './publicPage.js';
 
 const route = (location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
 if (route === '/control-room') {
-  import('./control-room/controlRoomPage.js')
-    .then(({ mountControlRoom }) => mountControlRoom())
-    .catch((e) => console.error('[Control Room] page indisponible :', e));
+  import('./control-room/controlRoomGatePage.js')
+    .then(({ mountControlRoomGate }) => mountControlRoomGate())
+    .catch((e) => console.error('[Control Room] gate indisponible :', e));
 } else {
   mountPublicPage();
 }

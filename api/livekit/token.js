@@ -9,6 +9,11 @@
 
 import { AccessToken } from 'livekit-server-sdk';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import {
+  validateSessionConfig,
+  verifySessionValue,
+  readSessionCookie,
+} from '../../src/server/controlRoomSession.js';
 
 const ROOM_NAME = 'main';
 const TTL_SECONDS = 7200; // 2 heures (performer et listener)
@@ -106,7 +111,8 @@ function readBody(req) {
 
 // Handler serverless Vercel : export default async function handler(req, res).
 // `env` injectable pour les tests (défaut : process.env en production).
-export default async function handler(req, res, env = process.env) {
+// `now` injectable pour les tests (défaut : Date.now).
+export default async function handler(req, res, env = process.env, { now = Date.now } = {}) {
   // 1. méthode : POST uniquement.
   if (!req || req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'POST' });
@@ -131,11 +137,19 @@ export default async function handler(req, res, env = process.env) {
     return json(res, 400, { error: 'invalid_role' });
   }
 
-  // 5. authentification performer (mot de passe timing-safe). Absent ou
-  //    incorrect -> même 401 générique (pas de distinction).
+  // 5. authentification performer (Lot 4F.1) : session Control Room signée via
+  //    cookie same-origin. Aucun mot de passe n'est accepté dans le corps ; le
+  //    champ password client est ignoré. Session absente/expirée/altérée -> 401
+  //    générique (pas de distinction). Le listener n'a pas besoin de session.
   if (role === 'performer') {
-    const provided = typeof body.password === 'string' ? body.password : '';
-    if (!safeEqualPassword(env.PERFORMER_PASSWORD, provided)) {
+    const sessCfg = validateSessionConfig(env);
+    if (!sessCfg.ok) {
+      console.error('[livekit/token] configuration session incomplète:', sessCfg.missing.join(',') || sessCfg.reasons.join(','));
+      return json(res, 503, { error: 'livekit_unavailable' });
+    }
+    const cookieValue = readSessionCookie(req);
+    const sess = verifySessionValue(cookieValue, env, { now });
+    if (!sess.authenticated) {
       return json(res, 401, { error: 'unauthorized' });
     }
   }

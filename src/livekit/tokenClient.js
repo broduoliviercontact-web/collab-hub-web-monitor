@@ -1,9 +1,10 @@
-// Client du endpoint token LiveKit (Lot 4C). Pur vis-à-vis du transport :
+// Client du endpoint token LiveKit (Lot 4C / 4F.1). Pur vis-à-vis du transport :
 // `fetchImpl` injectable (fetch en prod, faux en tests). Same-origin, POST JSON,
 // timeout via AbortController, validation stricte, erreurs normalisées.
 //
-// Le token n'est JAMAIS loggué. Le mot de passe n'est JAMAIS conservé au-delà de
-// la requête (présent uniquement dans le corps de la requête, pas de stockage).
+// Lot 4F.1 : le performer s'authentifie via le cookie de session Control Room
+// (same-origin, credentials:'same-origin') — aucun mot de passe n'est envoyé dans
+// le corps. Le listener n'a pas besoin de session. Le token n'est JAMAIS loggué.
 
 export const TOKEN_PATH = '/api/livekit/token';
 export const DEFAULT_TIMEOUT_MS = 8000;
@@ -24,7 +25,6 @@ function err(code, message) {
 // Rôle invalide -> rejeté AVANT tout fetch (pas d'appel réseau).
 export async function requestLiveKitToken({
   role,
-  password,
   fetchImpl,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   path = TOKEN_PATH,
@@ -33,11 +33,10 @@ export async function requestLiveKitToken({
   if (role !== 'performer' && role !== 'listener') {
     throw err(TOKEN_ERRORS.failed, 'Rôle invalide.');
   }
-  if (role === 'performer' && (typeof password !== 'string' || !password)) {
-    throw err(TOKEN_ERRORS.failed, 'Mot de passe performer requis.');
-  }
 
-  const body = role === 'performer' ? { role, password } : { role };
+  // Lot 4F.1 : corps réduit à { role }. Le performer est authentifié côté serveur
+  // par le cookie de session (credentials:'same-origin'). Aucun mot de passe.
+  const body = { role };
   const Controller = AbortControllerImpl || (typeof AbortController !== 'undefined' ? AbortController : null);
   const controller = Controller ? new Controller() : null;
   const timer = controller ? setTimeout(() => { try { controller.abort(); } catch {} }, timeoutMs) : null;

@@ -41,6 +41,12 @@ export const LISTENER_ERRORS = {
 
 export const DEFAULT_VOLUME = 0.8;
 
+// Atténuation -20 dB du listener (Lot 4F.1) : gain linéaire = 10^(-20/20) = 0.1.
+// effectiveVolume = userVolume * 0.1 quand actif. Le slider reste le volume
+// utilisateur ; l'atténuation est un multiplicateur appliqué à l'audioSink.
+export const ATTENUATION_DB = -20;
+export const ATTENUATION_GAIN = 0.1;
+
 function err(code, message, cause) {
   return { code, message, cause: cause?.code || cause?.name || undefined };
 }
@@ -82,6 +88,7 @@ export function createLiveKitListener({
 
   let volume = clamp01(initialVolume);
   let muted = false;
+  let attenuationActive = false; // Lot 4F.1 : -20 dB
 
   let connectedAt = null;
   let playingSince = null;
@@ -103,9 +110,17 @@ export function createLiveKitListener({
     for (const l of listeners) { try { l(snap); } catch {} }
   }
 
+  // Volume effectif appliqué à l'audioSink : mute prioritaire, puis atténuation
+  // -20 dB (×0.1) si active, sinon volume utilisateur. Le mute silence totalement
+  // (prioritaire sur l'atténuation) ; l'unmute restaure le volume effectif atténué.
+  function effectiveVolume() {
+    if (muted) return 0;
+    return attenuationActive ? volume * ATTENUATION_GAIN : volume;
+  }
+
   function applyVolumeMuted() {
     if (!audioSink) return;
-    try { audioSink.setVolume(volume); } catch {}
+    try { audioSink.setVolume(effectiveVolume()); } catch {}
     try { audioSink.setMuted(muted); } catch {}
   }
 
@@ -320,6 +335,15 @@ export function createLiveKitListener({
     return muted;
   }
 
+  // Lot 4F.1 : atténuation -20 dB (double-clic enceinte / bouton -20 dB).
+  function setAttenuation(value) {
+    attenuationActive = !!value;
+    applyVolumeMuted();
+    notify();
+    return attenuationActive;
+  }
+  function toggleAttenuation() { return setAttenuation(!attenuationActive); }
+
   async function stop() {
     if (state === 'stopped' || state === 'idle') return;
     if (state === 'stopping') return;
@@ -356,6 +380,9 @@ export function createLiveKitListener({
       autoplayBlocked,
       volume,
       muted,
+      attenuationDb: attenuationActive ? ATTENUATION_DB : 0,
+      attenuationActive,
+      effectiveVolume: effectiveVolume(),
       reconnectCount,
       connectedAt,
       playingSince,
@@ -374,6 +401,8 @@ export function createLiveKitListener({
     startAudio,
     setVolume,
     setMuted,
+    setAttenuation,
+    toggleAttenuation,
     stop,
     disconnect,
     destroy,

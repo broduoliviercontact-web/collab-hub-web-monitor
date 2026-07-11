@@ -54,15 +54,14 @@ export function buildControlRoomDOM(
     return s;
   }
 
-  // 1. CONNEXION
-  const bConn = block('Connexion');
-  const password = doc.createElement('input');
-  password.id = 'cr-password';
-  password.type = 'password';
-  password.autocomplete = 'off';
-  password.placeholder = 'Mot de passe performer';
-  const startBroadcast = btn('cr-start-broadcast', 'DÉMARRER LA DIFFUSION');
-  bConn.append(password, startBroadcast);
+  // 1. SESSION (Lot 4F.1) : la Control Room n'est montée qu'après authentification
+  //    serveur (gate). Aucun champ mot de passe ici — l'auth se fait sur l'écran
+  //    de login. Bouton de déconnexion explicite -> détruit la session.
+  const bSess = block('Session');
+  const sessionLabel = span('cr-session'); sessionLabel.className = 'cr-hint';
+  sessionLabel.textContent = 'Session performer active';
+  const logout = btn('cr-logout', 'QUITTER LA CONTROL ROOM');
+  bSess.append(sessionLabel, logout);
 
   // 2. SOURCE AUDIO
   const bSrc = block('Source audio');
@@ -102,11 +101,12 @@ export function buildControlRoomDOM(
   const broadcastLabel = span('cr-broadcast-label');
   diffStatus.append(broadcastDot, ' ', broadcastLabel);
   const onair = span('cr-onair'); onair.className = 'cr-onair'; onair.hidden = true; onair.textContent = 'ON AIR';
+  const startBroadcast = btn('cr-start-broadcast', 'DÉMARRER LA DIFFUSION');
   const stopBroadcast = btn('cr-stop-broadcast', 'ARRÊTER LA DIFFUSION');
   const diffInfo = doc.createElement('div'); diffInfo.className = 'cr-info';
   const room = span('cr-room'); const identity = span('cr-identity'); const track = span('cr-track');
   diffInfo.append(room, identity, track);
-  bDiff.append(diffStatus, onair, stopBroadcast, diffInfo);
+  bDiff.append(diffStatus, onair, startBroadcast, stopBroadcast, diffInfo);
 
   // 7. STATUT
   const bStat = block('Statut');
@@ -118,7 +118,7 @@ export function buildControlRoomDOM(
   if (mount && typeof mount.appendChild === 'function') mount.appendChild(root);
 
   const els = {
-    root, password, startBroadcast,
+    root, sessionLabel, logout, startBroadcast,
     authorize, permState, device, refreshDevices,
     startCapture, stopCapture, captureHint,
     meter, meterBar, meterPeak, meterDb,
@@ -172,7 +172,7 @@ export function renderControlRoom(snap, els, { debug = false } = {}) {
   if (els.identity) els.identity.textContent = snap.identity ? `Identity : ${snap.identity}` : '';
   if (els.track) els.track.textContent = snap.trackSid ? `Track : ${snap.trackSid}` : '';
 
-  // Connexion / diffusion
+  // Connexion / diffusion (Lot 4F.1 : pas de mot de passe — auth via session)
   els._canBroadcast = !!snap.canBroadcast;
   if (els.startBroadcast) {
     els.startBroadcast.disabled = !snap.canBroadcast;
@@ -245,16 +245,16 @@ export function renderControlRoom(snap, els, { debug = false } = {}) {
   }
 }
 
-// Active/désactive DÉMARRER LA DIFFUSION selon canBroadcast + présence du mot de
-// passe (le mot de passe n'entre jamais dans le snapshot -> l'UI le lit elle-même).
+// Active/désactive DÉMARRER LA DIFFUSION selon canBroadcast (aucun mot de passe
+// à saisir en Control Room — l'auth est gérée par la session serveur).
 export function updateBroadcastEnabled(els) {
   if (!els || !els.startBroadcast) return;
-  const hasPassword = typeof els.password.value === 'string' && els.password.value.length > 0;
-  els.startBroadcast.disabled = !(els._canBroadcast && hasPassword);
+  els.startBroadcast.disabled = !els._canBroadcast;
 }
 
 // Câble les contrôles. handlers = { onAuthorize, onRefreshDevices, onSelectDevice,
-// onStartCapture, onStopCapture, onGain, onStartBroadcast(password), onStopBroadcast }.
+// onStartCapture, onStopCapture, onGain, onStartBroadcast, onStopBroadcast,
+// onLogout }.
 export function wireControlRoom({ els, handlers = {} } = {}) {
   if (!els) return;
   const on = (el, ev, cb) => {
@@ -267,10 +267,9 @@ export function wireControlRoom({ els, handlers = {} } = {}) {
   on(els.startCapture, 'click', handlers.onStartCapture);
   on(els.stopCapture, 'click', handlers.onStopCapture);
   on(els.stopBroadcast, 'click', handlers.onStopBroadcast);
+  on(els.logout, 'click', handlers.onLogout);
   on(els.startBroadcast, 'click', () => {
-    if (typeof handlers.onStartBroadcast === 'function') {
-      handlers.onStartBroadcast(els.password && els.password.value ? String(els.password.value) : '');
-    }
+    if (typeof handlers.onStartBroadcast === 'function') handlers.onStartBroadcast();
   });
   on(els.device, 'change', () => {
     if (typeof handlers.onSelectDevice === 'function') {
@@ -283,6 +282,87 @@ export function wireControlRoom({ els, handlers = {} } = {}) {
       handlers.onGain(Number.isFinite(v) ? v : 100);
     }
   });
-  // Toute saisie mot de passe -> réévalue la disponibilité du bouton diffusion.
-  on(els.password, 'input', () => updateBroadcastEnabled(els));
+}
+
+// ================= Écran de login (Lot 4F.1) =================
+// Gate applicatif : avant authentification, SEUL cet écran est monté. Aucun
+// contrôle métier, aucun moteur audio, aucun import LiveKit lourd. Le mot de
+// passe reste dans l'<input>, transmis au gate puis vidé (jamais stocké, jamais
+// reflété dans le DOM hors saisie).
+
+export function buildLoginDOM(
+  documentRef = (typeof document !== 'undefined' ? document : null),
+  mount = null,
+) {
+  const doc = documentRef;
+  if (!doc || typeof doc.createElement !== 'function') return { root: null, els: null };
+
+  const root = doc.createElement('main');
+  root.className = 'card cr-login';
+
+  const title = doc.createElement('h1');
+  title.className = 'cr-login-title';
+  title.textContent = 'CONTROL ROOM';
+
+  const subtitle = doc.createElement('p');
+  subtitle.className = 'cr-login-sub';
+  subtitle.textContent = 'Accès performer';
+
+  const form = doc.createElement('form');
+  form.className = 'cr-login-form';
+  form.setAttribute('autocomplete', 'off');
+
+  const password = doc.createElement('input');
+  password.id = 'cr-login-password';
+  password.type = 'password';
+  password.autocomplete = 'off';
+  password.placeholder = 'Mot de passe performer';
+  password.setAttribute('aria-label', 'Mot de passe performer');
+
+  const enter = doc.createElement('button');
+  enter.id = 'cr-login-enter';
+  enter.type = 'submit';
+  enter.textContent = 'ENTRER';
+
+  const error = doc.createElement('p');
+  error.id = 'cr-login-error';
+  error.className = 'cr-error';
+  error.setAttribute('role', 'alert');
+
+  form.append(password, enter);
+  root.append(title, subtitle, form, error);
+
+  if (mount && typeof mount.appendChild === 'function') mount.appendChild(root);
+
+  const els = { root, title, subtitle, form, password, enter, error, _doc: doc };
+  return { root, els };
+}
+
+// Rend l'état du gate. snap = { state, error } ; error = message FR ou null.
+// state ∈ { unauthenticated, authenticating, authenticated, error }.
+export function renderLogin(snap, els) {
+  if (!snap || !els) return;
+  if (els.error) els.error.textContent = snap.error || '';
+  if (els.enter) {
+    els.enter.disabled = snap.state === 'authenticating';
+    els.enter.textContent = snap.state === 'authenticating' ? 'CONNEXION…' : 'ENTRER';
+  }
+  if (els.password) els.password.disabled = snap.state === 'authenticating';
+}
+
+// Câble le formulaire. onLogin(password) appelé à la soumission ; le mot de passe
+// est lu puis l'<input> est vidée immédiatement (jamais conservé au-delà de l'appel).
+export function wireLogin({ els, onLogin } = {}) {
+  if (!els || typeof onLogin !== 'function') return;
+  const submit = (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    const pw = els.password && typeof els.password.value === 'string' ? els.password.value : '';
+    els.password && (els.password.value = '');
+    onLogin(pw);
+  };
+  if (els.form && typeof els.form.addEventListener === 'function') {
+    els.form.addEventListener('submit', submit);
+  } else if (els.enter && typeof els.enter.addEventListener === 'function') {
+    els.enter.addEventListener('click', submit);
+  }
 }

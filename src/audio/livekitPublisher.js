@@ -149,7 +149,7 @@ export function createLiveKitPublisher({
     });
   }
 
-  async function connect({ password, outputStream } = {}) {
+  async function connect({ outputStream } = {}) {
     if (destroyed) throw err(PUBLISHER_ERRORS.failed, 'Publisher détruit.');
     if (ACTIVE.has(state)) throw err(PUBLISHER_ERRORS.busy, 'Publisher déjà actif.');
 
@@ -161,11 +161,12 @@ export function createLiveKitPublisher({
     userStopped = false;
     lastError = null;
 
-    // 2. demander le token.
+    // 2. demander le token. Lot 4F.1 : auth performer via cookie de session
+    //    (same-origin) — aucun mot de passe transmis ici.
     setState('requesting_token');
     let tokenRes;
     try {
-      tokenRes = await tokenClient.requestLiveKitToken({ role: 'performer', password });
+      tokenRes = await tokenClient.requestLiveKitToken({ role: 'performer' });
     } catch (e) {
       setError(PUBLISHER_ERRORS.token, 'Échec obtention token.', e);
       throw err(PUBLISHER_ERRORS.token, 'Échec obtention token.', e);
