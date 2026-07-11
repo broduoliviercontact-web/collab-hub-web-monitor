@@ -5,12 +5,14 @@
 
 import './styles/main.css';
 import { connectCollabHub } from './collabHub/socketClient.js';
-import { routeControl, KNOWN_HEADERS, HEARTBEAT_HEADER } from './collabHub/messageRouter.js';
+import { routeControl, KNOWN_HEADERS, HEARTBEAT_HEADER, STREAM_HEADERS } from './collabHub/messageRouter.js';
 import { createSoundState, DEFAULTS } from './state/soundState.js';
 import { renderField, flashElement, fieldElementKey } from './ui/renderSoundInfo.js';
 import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
 import { loadSoundState, saveSoundState, clearSoundState } from './state/persist.js';
 import { createFreshnessState, computePublicStatus } from './state/freshness.js';
+import { createStreamStatus, routeStreamControl } from './state/streamStatus.js';
+import { buildStreamStatusDOM, renderStreamStatus } from './ui/streamStatusView.js';
 import { isLiveKitEnabled } from './listener/listenerUI.js';
 
 export function mountPublicPage() {
@@ -53,12 +55,29 @@ export function mountPublicPage() {
     if (Number.isFinite(ms)) freshness.restoreContent(ms);
   }
 
+  // --- État de flux direct (Lot 4G) : statut public AVANT connexion LiveKit ---
+  // Construit et observé seulement si LiveKit activé (cohérent avec la section
+  // d'écoute). Aucune connexion listener utilisée pour déterminer la présence.
+  let streamStatus = null;
+  let streamEls = null;
+  let streamAnchor = els.card;
+  if (LIVEKIT_ENABLED) {
+    streamStatus = createStreamStatus({ now: Date.now });
+    const built = buildStreamStatusDOM(document, els.card);
+    if (built && built.section) {
+      streamEls = built.els;
+      streamAnchor = built.section; // la section listener se monte APRÈS ce bloc
+      renderStreamStatus(streamStatus.getSnapshot(), streamEls);
+    }
+  }
+
   let connStatus = null;
   let lastPublicStatus = null;
   let lastFresh = null;
 
   let diagApi = null;
   let listenerApi = null;
+  let collabApi = null;
 
   function recomputePublicState() {
     if (connStatus !== null) {
@@ -75,15 +94,42 @@ export function mountPublicPage() {
     }
   }
 
+  // Rend le statut de flux (Lot 4G). Appelé à chaque header de flux reçu et à
+  // chaque tick 1 s (pour rafraîchir la fraîcheur : un état peut devenir STALE
+  // sans nouveau header -> STATUT INDISPONIBLE).
+  function renderStreamState() {
+    if (streamStatus && streamEls) renderStreamStatus(streamStatus.getSnapshot(), streamEls);
+  }
+
   setInterval(() => {
     recomputePublicState();
+    renderStreamState();
     if (diagApi) {
       diagApi.refreshFreshness(freshness);
       if (diagApi.refreshLivekit) diagApi.refreshLivekit();
+      if (diagApi.refreshStream) diagApi.refreshStream();
     }
   }, 1000);
 
+  // Observe les headers de flux (Lot 4G) après (re)connexion. Idempotent via le
+  // guard de socketClient (réémis une fois par socket.id après vrai disconnect).
+  function observeStreamHeaders() {
+    if (!collabApi || !streamStatus) return;
+    for (const h of STREAM_HEADERS) {
+      try { collabApi.observeHeaderOnce(h); } catch { /* guard idempotent */ }
+    }
+  }
+
   function handleControl(data) {
+    // Lot 4G : headers de flux direct (avant tout routeControl, qui n'accepte
+    // que les 5 contenus). Aucun secret transporté.
+    if (streamStatus && data && STREAM_HEADERS.includes(data.header)) {
+      routeStreamControl(data, streamStatus);
+      renderStreamState();
+      recomputePublicState();
+      if (diagApi) { diagApi.logControl(data); diagApi.refreshStream(); }
+      return;
+    }
     if (data && data.header === HEARTBEAT_HEADER) {
       freshness.onHeartbeat();
     } else {
@@ -110,11 +156,14 @@ export function mountPublicPage() {
     connStatus = status;
     freshness.setServerStatus(status);
     recomputePublicState();
+    if (status === 'connected') observeStreamHeaders(); // (re)connexion -> réobserve
     if (diagApi) diagApi.setStatus(status);
   }
 
   connectCollabHub({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE, onControl: handleControl, onStatus: handleStatus })
     .then((api) => {
+      collabApi = api;
+      observeStreamHeaders(); // 1re connexion (si déjà connectée, guard idempotent)
       if (new URLSearchParams(location.search).get('debug') === '1') {
         const diag = document.getElementById('diagnostic');
         if (diag) import('./diagnostic/diagnosticPanel.js').then((m) => {
@@ -123,8 +172,10 @@ export function mountPublicPage() {
             initialSaved: lastSavedAt,
             clear: () => { const ok = clearSoundState(localStorage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
             livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listenerApi ? listenerApi.getSnapshot() : null }),
+            streamDiag: () => streamStatus ? streamStatus.getSnapshot() : null,
           });
           diagApi.refreshFreshness(freshness);
+          if (diagApi.refreshStream) diagApi.refreshStream();
         });
       }
     })
@@ -132,7 +183,7 @@ export function mountPublicPage() {
 
   if (LIVEKIT_ENABLED) {
     import('./listener/listenerSection.js')
-      .then(({ mountListenerSection }) => { listenerApi = mountListenerSection({ mountAfter: els.card }); })
+      .then(({ mountListenerSection }) => { listenerApi = mountListenerSection({ mountAfter: streamAnchor }); })
       .catch((e) => console.error('[LiveKit] section listener indisponible :', e));
   }
 

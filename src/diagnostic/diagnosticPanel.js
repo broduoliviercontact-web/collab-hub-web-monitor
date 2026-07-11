@@ -52,6 +52,16 @@ export function initDiagnostic(api, root, persistence = {}) {
   const lkReconnects = el(root, 'diag-lk-reconnects');
   const lkError = el(root, 'diag-lk-error');
   const livekitDiag = typeof persistence.livekitDiag === 'function' ? persistence.livekitDiag : null;
+  // Lot 4G : flux direct public (spans optionnels).
+  const stOnAir = el(root, 'diag-stream-onair');
+  const stLevel = el(root, 'diag-stream-level');
+  const stPeak = el(root, 'diag-stream-peak');
+  const stUpdatedAt = el(root, 'diag-stream-updated-at');
+  const stAge = el(root, 'diag-stream-age');
+  const stFresh = el(root, 'diag-stream-fresh');
+  const stSignal = el(root, 'diag-stream-signal');
+  const stStatus = el(root, 'diag-stream-status');
+  const streamDiag = typeof persistence.streamDiag === 'function' ? persistence.streamDiag : null;
 
   let onAnyEnabled = onanyToggle.checked;
   let controlCount = 0;
@@ -156,6 +166,23 @@ export function initDiagnostic(api, root, persistence = {}) {
     if (lkError) lkError.textContent = (s.lastError && s.lastError.code) || '—';
   }
 
+  // --- Flux direct public (Lot 4G) : rafraîchi par le timer central (main.js).
+  // N'affiche JAMAIS de token/secret (le snapshot n'en contient pas).
+  function refreshStream() {
+    if (!streamDiag) return;
+    let s = null;
+    try { s = streamDiag(); } catch {}
+    s = s || {};
+    if (stOnAir) stOnAir.textContent = s.onAir === 1 ? '1' : s.onAir === 0 ? '0' : '—';
+    if (stLevel) stLevel.textContent = typeof s.level === 'number' ? s.level.toFixed(3) : '—';
+    if (stPeak) stPeak.textContent = typeof s.peak === 'number' ? s.peak.toFixed(3) : '—';
+    if (stUpdatedAt) stUpdatedAt.textContent = fmtTs(s.updatedAt);
+    if (stAge) stAge.textContent = Number.isFinite(s.ageMs) ? `${Math.round(s.ageMs)} ms` : '—';
+    if (stFresh) stFresh.textContent = s.fresh ? 'oui' : 'non';
+    if (stSignal) stSignal.textContent = s.signalPresent ? 'oui' : 'non';
+    if (stStatus) stStatus.textContent = s.computedStatus || '—';
+  }
+
   // --- Événements Collab-Hub connus (listeners uniques ; CH-ClientScript.js:546-709) ---
   ['serverMessage', 'myUsername', 'allUsers', 'otherUsers', 'availableControls',
    'observedControls', 'myControls', 'availableEvents', 'observedEvents', 'myEvents',
@@ -188,5 +215,6 @@ export function initDiagnostic(api, root, persistence = {}) {
 
   recomputeObserveAll();
   refreshLivekit();
-  return { setStatus, logControl, setLocalSaved, setLocalRestore, refreshFreshness, refreshLivekit };
+  refreshStream();
+  return { setStatus, logControl, setLocalSaved, setLocalRestore, refreshFreshness, refreshLivekit, refreshStream };
 }

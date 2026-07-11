@@ -56,7 +56,12 @@ export function buildListenerDOM(documentRef = (typeof document !== 'undefined' 
 
   const title = doc.createElement('h2');
   title.className = 'lk-title';
-  title.textContent = 'DIRECT AUDIO';
+  // Lot 4G : le bloc "DIRECT AUDIO" (statut de flux public, state/streamStatus)
+  // est désormais la carte dédiée placée au-dessus. Cette section devient
+  // l'unité d'écoute -> titre aligné sur le bouton, pour éviter un doublon
+  // "DIRECT AUDIO". Moteur listener, bouton ÉCOUTER LE DIRECT et logique
+  // inchangés.
+  title.textContent = 'Écouter le direct';
 
   const statusLine = doc.createElement('p');
   statusLine.className = 'lk-status';

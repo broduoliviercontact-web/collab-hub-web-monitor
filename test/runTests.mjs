@@ -4115,3 +4115,279 @@ test('hotfix : snapshot listener sans secret (audioUnlocked + diag, aucun token/
   assert.equal(typeof snap.reconciliationCount, 'number');
   l.destroy();
 });
+
+// ============================================================
+// Lot 4G — Statut de flux direct public + mini VU-mètre
+// (src/state/streamStatus.js, src/control-room/streamPresencePublisher.js,
+//  src/ui/streamStatusView.js)
+// ============================================================
+import {
+  createStreamStatus, routeStreamControl,
+  STREAM_HEADERS, STALE_MS, SIGNAL_THRESHOLD,
+  STREAM_STATUS, STREAM_SIGNAL,
+  clamp01, parseOnAir, parseTimestamp,
+} from '../src/state/streamStatus.js';
+import {
+  createStreamPresencePublisher, DEFAULT_STREAM_THROTTLE_MS,
+} from '../src/control-room/streamPresencePublisher.js';
+import {
+  buildStreamStatusDOM, renderStreamStatus,
+} from '../src/ui/streamStatusView.js';
+
+// Faux emitter Collab-Hub : capture les publish(header, values).
+function makeFakeStreamEmitter() {
+  const calls = [];
+  return {
+    calls,
+    publish(header, values) { calls.push({ header, values: Array.isArray(values) ? values.slice() : values }); },
+  };
+}
+function meterOf(rms, peak) { return { rms, peak, db: rms > 0 ? 20 * Math.log10(rms) : -Infinity, clipping: false }; }
+
+// Ingest un snapshot complet de flux en 4 headers (comme la Control Room publie).
+function ingestStream(stream, { onAir, level, peak, updatedAt }, now) {
+  stream.ingest('stream_onair', [onAir]);
+  stream.ingest('stream_level', [level]);
+  stream.ingest('stream_peak', [peak]);
+  stream.ingest('stream_updated_at', [updatedAt]);
+  if (now) { /* no-op : receivedAt déjà posé par ingest */ }
+}
+
+// 1. onair=1 + niveau haut -> EN DIRECT / présent
+test('streamStatus : onair=1 + niveau haut -> EN DIRECT / présent', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  ingestStream(s, { onAir: 1, level: 0.5, peak: 0.8, updatedAt: 1000 });
+  const snap = s.getSnapshot();
+  assert.equal(snap.computedStatus, STREAM_STATUS.LIVE);
+  assert.equal(snap.signal, STREAM_SIGNAL.PRESENT);
+  assert.equal(snap.signalPresent, true);
+  assert.equal(snap.onAir, 1);
+});
+
+// 2. onair=1 + niveau bas -> EN DIRECT / silence
+test('streamStatus : onair=1 + niveau bas -> EN DIRECT / silence', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  ingestStream(s, { onAir: 1, level: 0.001, peak: 0.002, updatedAt: 1000 });
+  const snap = s.getSnapshot();
+  assert.equal(snap.computedStatus, STREAM_STATUS.LIVE);
+  assert.equal(snap.signal, STREAM_SIGNAL.SILENT);
+  assert.equal(snap.signalPresent, false);
+});
+
+// 3. onair=0 -> HORS ANTENNE
+test('streamStatus : onair=0 (frais) -> HORS ANTENNE', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  ingestStream(s, { onAir: 0, level: 0, peak: 0, updatedAt: 1000 });
+  const snap = s.getSnapshot();
+  assert.equal(snap.computedStatus, STREAM_STATUS.OFF_AIR);
+  assert.equal(snap.signal, STREAM_SIGNAL.NONE);
+  assert.equal(snap.fresh, true);
+});
+
+// 4. timestamp stale -> STATUT INDISPONIBLE (pas de faux EN DIRECT)
+test('streamStatus : stale -> STATUT INDISPONIBLE (pas de faux EN DIRECT)', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  ingestStream(s, { onAir: 1, level: 0.5, peak: 0.8, updatedAt: 1000 });
+  c.advance(STALE_MS + 500); // > 3 s sans mise à jour
+  const snap = s.getSnapshot();
+  assert.equal(snap.computedStatus, STREAM_STATUS.UNAVAILABLE);
+  assert.equal(snap.fresh, false);
+  assert.equal(snap.signal, STREAM_SIGNAL.NONE);
+});
+
+// 5. payload invalide -> fallback sûr (INDISPONIBLE, niveau 0)
+test('streamStatus : payload invalide -> fallback sûr', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  assert.equal(s.getSnapshot().computedStatus, STREAM_STATUS.UNAVAILABLE);
+  // onair invalide -> on conserve null (fallback), pas de faux EN DIRECT
+  s.ingest('stream_onair', ['maybe']);
+  s.ingest('stream_level', ['not-a-number']);
+  s.ingest('stream_peak', [null]);
+  s.ingest('stream_updated_at', ['garbage']);
+  const snap = s.getSnapshot();
+  assert.equal(snap.computedStatus, STREAM_STATUS.UNAVAILABLE);
+  assert.equal(snap.level, 0);
+  assert.equal(snap.peak, 0);
+  assert.equal(snap.onAir, null);
+});
+
+// 6. meter borné 0..1 (clamp01 + publisher clamp)
+test('streamStatus : clamp01 borne 0..1 (invalides -> 0, >1 -> 1)', () => {
+  assert.equal(clamp01(0.5), 0.5);
+  assert.equal(clamp01(2.5), 1);
+  assert.equal(clamp01(-0.3), 0);
+  assert.equal(clamp01(NaN), 0);
+  assert.equal(clamp01('abc'), 0);
+});
+
+// 7. throttle respecté (publisher)
+test('publisher : throttle respecté (pas d envoi à chaque frame)', () => {
+  const c = makeClock(1000);
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: true }, meterOf(0.5, 0.8));   // t=1000 : transition -> publish
+  assert.equal(em.calls.length, 4);              // 4 headers publiés
+  assert.equal(p.getDiagnostics().publishCount, 1);
+  c.advance(100); p.update({ onAir: true }, meterOf(0.6, 0.9)); // t=1100 : throttle bloqué
+  assert.equal(p.getDiagnostics().publishCount, 1);
+  c.advance(300); p.update({ onAir: true }, meterOf(0.6, 0.9)); // t=1400 : due -> publish
+  assert.equal(p.getDiagnostics().publishCount, 2);
+  // onair publié = 1, level clampé
+  const onairCalls = em.calls.filter((x) => x.header === 'stream_onair').map((x) => x.values[0]);
+  assert.deepEqual(onairCalls, [1, 1]);
+});
+
+// 8. stop diffusion -> reset immédiat (onair=0, level=0, peak=0)
+test('publisher : stop -> reset immédiat onair=0 level=0 peak=0', () => {
+  const c = makeClock(1000);
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: true }, meterOf(0.5, 0.8));
+  assert.equal(p.getDiagnostics().publishedOnAir, 1);
+  p.stop();
+  const d = p.getDiagnostics();
+  assert.equal(d.publishedOnAir, 0);
+  assert.equal(d.publishedLevel, 0);
+  assert.equal(d.publishedPeak, 0);
+  // dernière publication onair=0
+  const lastOnair = em.calls.filter((x) => x.header === 'stream_onair').pop();
+  assert.deepEqual(lastOnair.values, [0]);
+});
+
+// 8b. transition onair (start/stop) publiée immédiatement hors throttle
+test('publisher : transition onair publiée immédiatement (hors throttle)', () => {
+  const c = makeClock(1000);
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: false }, meterOf(0, 0));  // t=1000 : transition initiale -> onair=0
+  assert.equal(p.getDiagnostics().publishCount, 1);
+  c.advance(50); p.update({ onAir: true }, meterOf(0.5, 0.7)); // t=1050 : transition 0->1 immédiate
+  assert.equal(p.getDiagnostics().publishCount, 2);
+  assert.equal(p.getDiagnostics().publishedOnAir, 1);
+});
+
+// 8c. meter borné côté publisher (level/peak clampés même si meter > 1)
+test('publisher : level/peak clampés 0..1 même si meter > 1', () => {
+  const c = makeClock(1000);
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: true }, meterOf(2.5, 5.0));
+  const level = em.calls.find((x) => x.header === 'stream_level').values[0];
+  const peak = em.calls.find((x) => x.header === 'stream_peak').values[0];
+  assert.equal(level, 1);
+  assert.equal(peak, 1);
+});
+
+// 9. page publique réagit aux headers (routeStreamControl)
+test('routeStreamControl : route les headers de flux, ignore les autres', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  // header de flux -> routé
+  assert.equal(routeStreamControl({ header: 'stream_onair', values: [1] }, s), true);
+  assert.equal(s.getSnapshot().onAir, 1);
+  // header de contenu (non flux) -> non routé
+  assert.equal(routeStreamControl({ header: 'sound_title', values: ['x'] }, s), false);
+  // data invalide -> non routé
+  assert.equal(routeStreamControl(null, s), false);
+  assert.equal(routeStreamControl({ header: 'unknown', values: [1] }, s), false);
+});
+
+// 9b. routeStreamControl alimente un EN DIRECT cohérent
+test('routeStreamControl : headers complets -> EN DIRECT / présent', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_onair', values: [1] }, s);
+  routeStreamControl({ header: 'stream_level', values: [0.4] }, s);
+  routeStreamControl({ header: 'stream_peak', values: [0.7] }, s);
+  routeStreamControl({ header: 'stream_updated_at', values: [1000] }, s);
+  const snap = s.getSnapshot();
+  assert.equal(snap.computedStatus, STREAM_STATUS.LIVE);
+  assert.equal(snap.signalPresent, true);
+  assert.equal(snap.peak, 0.7);
+});
+
+// 10. listener existant non régressé : bouton ÉCOUTER LE DIRECT inchangé,
+//     titre de section changé (plus de doublon "DIRECT AUDIO"), DOM construit.
+test('listener : bouton ÉCOUTER LE DIRECT inchangé + titre section ajusté (Lot 4G)', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  assert.equal(els.primary.textContent, 'ÉCOUTER LE DIRECT');
+  // Le h2 de la section listener ne duplique plus "DIRECT AUDIO" (titre du bloc
+  // de flux public). On ne dépend pas du texte exact, juste de l'absence du
+  // doublon.
+  const h2 = doc._created.find((e) => e.tagName === 'H2');
+  assert.ok(h2, 'section listener a un titre');
+  assert.notEqual(h2.textContent, 'DIRECT AUDIO');
+});
+
+// 11. aucun secret dans snapshots streamStatus + publisher diagnostics
+test('streamStatus/publisher : aucun secret/token/password dans snapshots', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  ingestStream(s, { onAir: 1, level: 0.5, peak: 0.8, updatedAt: 1000 });
+  const snap = s.getSnapshot();
+  const snapJson = JSON.stringify(snap);
+  assert.ok(!/token|password|apiKey|apiSecret|secret|cookie/i.test(snapJson));
+
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: true }, meterOf(0.5, 0.8));
+  const diag = p.getDiagnostics();
+  const diagJson = JSON.stringify(diag);
+  assert.ok(!/token|password|apiKey|apiSecret|secret|cookie/i.test(diagJson));
+  assert.equal(typeof diag.publishCount, 'number');
+  assert.equal(typeof diag.throttleMs, 'number');
+});
+
+// 12. reduced-motion propre : renderStreamStatus pose des largeurs (pas de
+//     transition inline) + data-stream-status, sans dépendre d'une animation.
+test('streamStatusView : rendu reduced-motion safe (largeurs + data-attr, pas de transition inline)', () => {
+  const doc = fakeDocument();
+  const { els } = buildStreamStatusDOM(doc, null);
+  assert.ok(els.section, 'bloc flux construit');
+  const snap = {
+    computedStatus: STREAM_STATUS.LIVE, signal: STREAM_SIGNAL.PRESENT,
+    level: 0.42, peak: 0.91, onAir: 1, ageMs: 100, fresh: true, signalPresent: true, updatedAt: 1000,
+  };
+  renderStreamStatus(snap, els);
+  assert.equal(els.statusLabel.textContent, 'EN DIRECT');
+  assert.equal(els.signalVal.textContent, 'présent');
+  // largeurs posées via setAttribute('style', ...) — pas de transition inline.
+  const barStyle = els.meterBar._attrs.style || '';
+  assert.match(barStyle, /width:42%/);
+  const peakStyle = els.meterPeak._attrs.style || '';
+  assert.match(peakStyle, /left:91%/);
+  assert.ok(!/transition/i.test(barStyle) && !/transition/i.test(peakStyle));
+  // data-stream-status posé pour le styling (state-driven, pas animation)
+  assert.equal(els.section._attrs['data-stream-status'], STREAM_STATUS.LIVE);
+});
+
+// 12b. rendu INDISPONIBLE par défaut (avant tout header reçu)
+test('streamStatusView : INDISPONIBLE par défaut avant tout header', () => {
+  const doc = fakeDocument();
+  const { els } = buildStreamStatusDOM(doc, null);
+  const s = createStreamStatus({ now: () => 1000 });
+  renderStreamStatus(s.getSnapshot(), els);
+  assert.equal(els.statusLabel.textContent, 'STATUT INDISPONIBLE');
+  assert.equal(els.section._attrs['data-stream-status'], STREAM_STATUS.UNAVAILABLE);
+  assert.match(els.meterBar._attrs.style, /width:0%/);
+});
+
+// 12c. constants stables (seuils documentés)
+test('streamStatus : seuils et constantes stables', () => {
+  assert.equal(STALE_MS, 3000);
+  assert.equal(SIGNAL_THRESHOLD, 0.01);
+  assert.deepEqual(STREAM_HEADERS, ['stream_onair', 'stream_level', 'stream_peak', 'stream_updated_at']);
+  assert.equal(DEFAULT_STREAM_THROTTLE_MS, 400);
+  assert.equal(parseOnAir(1), 1);
+  assert.equal(parseOnAir('0'), 0);
+  assert.equal(parseOnAir('maybe'), null);
+  assert.equal(parseTimestamp(1000), 1000);
+  assert.equal(parseTimestamp('2026-07-11T09:00:00Z') != null, true);
+  assert.equal(parseTimestamp('garbage'), null);
+});

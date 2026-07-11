@@ -18,6 +18,8 @@ import { createLiveKitPublisher } from '../audio/livekitPublisher.js';
 import { requestLiveKitToken } from '../livekit/tokenClient.js';
 import { Room, LocalAudioTrack, Track, AudioPresets } from '../livekit/livekitBrowser.js';
 import { createControlRoomController } from './controlRoomController.js';
+import { createStreamPresencePublisher } from './streamPresencePublisher.js';
+import { connectCollabHubPublisher } from '../collabHub/publishClient.js';
 import {
   buildControlRoomDOM,
   renderControlRoom,
@@ -47,6 +49,30 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
   });
   const controller = createControlRoomController({ audioEngine, publisher });
 
+  // --- Lot 4G : publication du statut de flux direct sur Collab-Hub ---
+  // Connexion Collab-Hub en mode publication (même serveur/namespace que la page
+  // publique). Aucun secret (valeurs publiques : onair, level, peak, timestamp).
+  // emitterRef mutable : l'emitter est branché quand la connexion résout ; avant,
+  // le publisher no-op (publication désactivée propre, le reste fonctionne).
+  const CH_SERVER_URL = (import.meta.env.VITE_COLLAB_HUB_URL || 'https://server.collab-hub.io').replace(/\/+$/, '');
+  const CH_NAMESPACE = (import.meta.env.VITE_COLLAB_HUB_NAMESPACE ?? '').replace(/^\/+|\/+$/g, '');
+  let streamConn = null;                       // connexion Collab-Hub (pour destroy)
+  const emitterRef = { current: null };       // {publish} branché à la connexion
+  const streamEmitter = {
+    publish(header, values) {
+      const e = emitterRef.current;
+      if (e && typeof e.publish === 'function') e.publish(header, values);
+    },
+  };
+  const streamPublisher = createStreamPresencePublisher({ now: Date.now, emitter: streamEmitter });
+  connectCollabHubPublisher({
+    serverUrl: CH_SERVER_URL,
+    namespace: CH_NAMESPACE,
+    username: `CH-CR_${Math.floor(Math.random() * 1000)}`,
+  })
+    .then((c) => { streamConn = c; emitterRef.current = { publish: c.publish }; })
+    .catch((e) => { console.warn('[Control Room] publication flux Collab-Hub désactivée :', e && e.message); });
+
   let rafId = null;
   let meterTimer = null;
   let sessionExpiredSignaled = false;
@@ -56,9 +82,18 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
   function startMeter() {
     if (rafId != null || meterTimer != null) return;
     if (reduceMotion) {
-      meterTimer = setInterval(() => renderMeter(controller.readMeter(), els), 100);
+      meterTimer = setInterval(() => {
+        const m = controller.readMeter();
+        renderMeter(m, els);
+        streamPublisher.update(controller.getSnapshot(), m);
+      }, 100);
     } else {
-      const tick = () => { renderMeter(controller.readMeter(), els); rafId = requestAnimationFrame(tick); };
+      const tick = () => {
+        const m = controller.readMeter();
+        renderMeter(m, els);
+        streamPublisher.update(controller.getSnapshot(), m);
+        rafId = requestAnimationFrame(tick);
+      };
       rafId = requestAnimationFrame(tick);
     }
   }
@@ -79,7 +114,7 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
       if (typeof onSessionExpired === 'function') onSessionExpired();
     }
     if (debug && debugPre) {
-      debugPre.textContent = JSON.stringify(snap, null, 2);
+      debugPre.textContent = JSON.stringify({ ...snap, streamPresence: streamPublisher.getDiagnostics() }, null, 2);
     }
   }
   controller.subscribe(onSnapshot);
@@ -117,7 +152,11 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
 
   let unloaded = false;
   if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => { controller.destroy(); }, { once: true });
+    window.addEventListener('beforeunload', () => {
+      try { streamPublisher.stop(); } catch {}
+      try { streamConn && streamConn.destroy(); } catch {}
+      controller.destroy();
+    }, { once: true });
   }
 
   // Démontage propre (logout / expiration) : stoppe moteurs + retire le DOM.
@@ -125,6 +164,8 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
     if (unloaded) return;
     unloaded = true;
     stopMeter();
+    try { streamPublisher.stop(); } catch {}
+    try { streamConn && streamConn.destroy(); } catch {}
     try { await controller.destroy(); } catch {}
     if (root && root.parentNode && typeof root.parentNode.removeChild === 'function') {
       try { root.parentNode.removeChild(root); } catch {}

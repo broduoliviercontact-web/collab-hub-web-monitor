@@ -400,6 +400,14 @@ BlackHole/LiveKit, login/logout/session Control Room, bouton enceinte + −20 dB
 multi-listener 3 appareils / réseaux différents + iOS). Voir `docs/bmad/13`,
 `docs/bmad/14` et `docs/release/v1.1.2.md`.
 
+**Lot 4G — indicateur public de flux direct** : la page publique affiche
+`DIRECT AUDIO / Statut (EN DIRECT · HORS ANTENNE · STATUT INDISPONIBLE) / Signal
+(présent · silence · —) / Niveau (mini VU-mètre)` **avant** tout clic sur
+« ÉCOUTER LE DIRECT », déterminé par un état léger publié par la Control Room sur
+Collab-Hub (`stream_onair`, `stream_level`, `stream_peak`, `stream_updated_at`,
+valeurs publiques, aucun secret) — indépendant de la connexion listener (moteur
+v1.1.2 et bouton inchangés). Voir `docs/bmad/15-public-stream-status.md`.
+
 > **Lot 4F.1 — variable serveur requise** : `CONTROL_ROOM_SESSION_SECRET`
 > (secret de signature HMAC, jamais `VITE_`, distinct de toute autre variable)
 > doit être configuré dans Vercel **Production + Preview**. Sans cette variable,

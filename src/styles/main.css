@@ -356,3 +356,39 @@ main.card[data-content-fresh="false"] .block {
   margin-left: 4px;
 }
 .lk-atten-badge[hidden] { display: none; }
+
+/* ---------- Statut de flux direct public (Lot 4G) ---------- */
+/* Carte additive sobre : réutilise .card/.block + les variables existantes.
+   Discret, horizontal, informatif (pas un remplacement du listener). */
+.stream-card { margin-top: 4px; }
+.stream-title {
+  font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); margin: 0 0 6px;
+}
+.stream-status, .stream-signal, .stream-level {
+  font-size: 0.85rem; margin: 2px 0; display: flex; align-items: center; gap: 6px;
+}
+.stream-key { color: var(--text-dim); }
+#stream-status-label { font-weight: 600; }
+.stream-card[data-stream-status="live"] #stream-status-label { color: var(--accent-soft); }
+.stream-card[data-stream-status="off_air"] #stream-status-label { color: var(--text-dim); }
+.stream-card[data-stream-status="unavailable"] #stream-status-label { color: var(--text-dim); }
+/* Mini VU-mètre horizontal discret (distinct du VU-mètre Control Room). */
+.stream-meter {
+  position: relative; display: inline-block;
+  width: 140px; height: 8px;
+  background: #000; border: 1px solid var(--rule);
+  border-radius: 4px; overflow: hidden; vertical-align: middle;
+}
+.stream-meter-bar {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 0%;
+  background: linear-gradient(90deg, var(--accent-soft) 0%, var(--accent-soft) 70%, #e6c34a 88%, #d65a5a 100%);
+}
+.stream-meter-peak {
+  position: absolute; top: 0; bottom: 0; left: 0%; width: 2px;
+  background: var(--text); opacity: 0.7;
+}
+/* reduced-motion : aucune transition sur le mini VU-mètre (valeur seuil seule). */
+@media (prefers-reduced-motion: reduce) {
+  .stream-meter-bar, .stream-meter-peak { transition: none; }
+}
