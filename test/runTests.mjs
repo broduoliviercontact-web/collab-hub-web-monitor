@@ -4726,82 +4726,128 @@ function richEls() {
   return { linkWrap: richEl(), link: richEl() };
 }
 
-// 1. [label]{url} valide
-test('sound_link : [label]{url} valide -> rich-link', () => {
-  const p = parseSoundLink('[Tom Johnson]{https://example.com}');
-  assert.equal(p.type, 'rich-link');
-  assert.equal(p.href, 'https://example.com');
-  assert.equal(p.label, 'Tom Johnson');
-  assert.equal(p.prefix, '');
-  assert.equal(p.suffix, '');
+// 1. deux liens valides
+test('sound_link : deux liens valides -> 2 segments link + texte entre', () => {
+  const segs = parseSoundLink('[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres, et [Music for 88]{https://example.com/music-for-88} est une œuvre intéressante.');
+  assert.equal(segs.length, 4);
+  assert.equal(segs[0].type, 'link');
+  assert.equal(segs[0].label, 'Tom Johnson');
+  assert.equal(segs[0].href, 'https://en.wikipedia.org/wiki/Tom_Johnson_(composer)');
+  assert.equal(segs[1].type, 'text');
+  assert.equal(segs[1].value, ' aime les nombres, et ');
+  assert.equal(segs[2].type, 'link');
+  assert.equal(segs[2].label, 'Music for 88');
+  assert.equal(segs[2].href, 'https://example.com/music-for-88');
+  assert.equal(segs[3].type, 'text');
+  assert.equal(segs[3].value, ' est une œuvre intéressante.');
 });
 
-// 2. URL contenant des parenthèses (preservées, délimiteurs = accolades)
+// 2. trois liens valides
+test('sound_link : trois liens valides -> 3 segments link', () => {
+  const segs = parseSoundLink('[a]{https://x} [b]{https://y} [c]{https://z}');
+  const links = segs.filter((s) => s.type === 'link');
+  assert.equal(links.length, 3);
+  assert.deepEqual(links.map((s) => s.href), ['https://x', 'https://y', 'https://z']);
+});
+
+// 3. texte avant, entre et après
+test('sound_link : texte avant, entre et après les liens', () => {
+  const segs = parseSoundLink('Avant [a]{https://x} entre [b]{https://y} après');
+  assert.equal(segs.length, 5);
+  assert.equal(segs[0].type, 'text'); assert.equal(segs[0].value, 'Avant ');
+  assert.equal(segs[1].type, 'link'); assert.equal(segs[1].href, 'https://x');
+  assert.equal(segs[2].type, 'text'); assert.equal(segs[2].value, ' entre ');
+  assert.equal(segs[3].type, 'link'); assert.equal(segs[3].href, 'https://y');
+  assert.equal(segs[4].type, 'text'); assert.equal(segs[4].value, ' après');
+});
+
+// 4. URL contenant des parenthèses (préservées, délimiteurs = accolades)
 test('sound_link : URL avec parenthèses préservée', () => {
-  const p = parseSoundLink('[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)}');
-  assert.equal(p.type, 'rich-link');
-  assert.equal(p.href, 'https://en.wikipedia.org/wiki/Tom_Johnson_(composer)');
+  const segs = parseSoundLink('[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)}');
+  assert.equal(segs.length, 1);
+  assert.equal(segs[0].type, 'link');
+  assert.equal(segs[0].href, 'https://en.wikipedia.org/wiki/Tom_Johnson_(composer)');
 });
 
-// 3. texte avant et après
-test('sound_link : texte avant et après le lien', () => {
-  const p = parseSoundLink('[Tom Johnson]{https://example.com} aime les nombres.');
-  assert.equal(p.type, 'rich-link');
-  assert.equal(p.prefix, '');
-  assert.equal(p.suffix, ' aime les nombres.');
-  const p2 = parseSoundLink('Découvrir [Tom Johnson]{https://example.com}.');
-  assert.equal(p2.prefix, 'Découvrir ');
-  assert.equal(p2.suffix, '.');
+// 5. un lien valide + un lien javascript invalide (le reste est conservé)
+test('sound_link : lien valide + lien javascript invalide -> texte brut pour l invalide', () => {
+  const segs = parseSoundLink('[a]{https://x} [b]{javascript:alert(1)}');
+  const links = segs.filter((s) => s.type === 'link');
+  assert.equal(links.length, 1);
+  assert.equal(links[0].href, 'https://x');
+  // Le fragment invalide devient texte brut (non cliquable), pas jeté.
+  const texts = segs.filter((s) => s.type === 'text').map((s) => s.value).join('');
+  assert.ok(texts.includes('[b]{javascript:alert(1)}'), 'fragment invalide conservé en texte');
+  // Aucun href dangereux créé.
+  assert.ok(!segs.some((s) => s.type === 'link' && /javascript:/.test(s.href)));
 });
 
-// 4. accolade fermante manquante -> invalid
-test('sound_link : accolade fermante manquante -> invalid', () => {
-  const p = parseSoundLink('[Tom Johnson]{https://example.com');
-  assert.equal(p.type, 'invalid');
-  assert.equal(p.attemptedRich, true);
+// 6. accolade fermante manquante -> texte brut (aucun lien)
+test('sound_link : accolade fermante manquante -> texte brut, aucun lien', () => {
+  const segs = parseSoundLink('[Tom Johnson]{https://example.com');
+  assert.equal(segs.filter((s) => s.type === 'link').length, 0);
+  assert.equal(segs.length, 1);
+  assert.equal(segs[0].type, 'text');
 });
 
-// 4b. crochet fermant manquant -> invalid
-test('sound_link : crochet fermant manquant -> invalid', () => {
-  assert.equal(parseSoundLink('[Tom Johnson{https://example.com}').type, 'invalid');
+// 6b. crochet fermant manquant -> texte brut
+test('sound_link : crochet fermant manquant -> texte brut, aucun lien', () => {
+  const segs = parseSoundLink('[Tom Johnson{https://example.com}');
+  assert.equal(segs.filter((s) => s.type === 'link').length, 0);
 });
 
-// 5. label vide -> invalid
-test('sound_link : label vide -> invalid', () => {
-  assert.equal(parseSoundLink('[]{https://example.com}').type, 'invalid');
-  assert.equal(parseSoundLink('[   ]{https://example.com}').type, 'invalid');
+// 7. label vide -> texte brut (aucun lien)
+test('sound_link : label vide -> texte brut, aucun lien', () => {
+  assert.equal(parseSoundLink('[]{https://example.com}').filter((s) => s.type === 'link').length, 0);
+  assert.equal(parseSoundLink('[   ]{https://example.com}').filter((s) => s.type === 'link').length, 0);
 });
 
-// 6. URL vide -> invalid
-test('sound_link : URL vide -> invalid', () => {
-  assert.equal(parseSoundLink('[Tom]{}').type, 'invalid');
+// 8. URL vide -> texte brut (aucun lien)
+test('sound_link : URL vide -> texte brut, aucun lien', () => {
+  assert.equal(parseSoundLink('[Tom]{}').filter((s) => s.type === 'link').length, 0);
 });
 
-// 7. protocole javascript refusé
-test('sound_link : protocole javascript refusé -> invalid (aucun href)', () => {
-  const p = parseSoundLink('[Tom]{javascript:alert(1)}');
-  assert.equal(p.type, 'invalid');
-  assert.equal(p.href, null);
+// 8b. data: et file: refusés -> texte brut (aucun href dangereux)
+test('sound_link : data: et file: refusés -> texte brut', () => {
+  assert.equal(parseSoundLink('[Tom]{data:text/html,xxx}').filter((s) => s.type === 'link').length, 0);
+  assert.equal(parseSoundLink('[Tom]{file:///etc/passwd}').filter((s) => s.type === 'link').length, 0);
 });
 
-// 7b. data: et file: refusés
-test('sound_link : data: et file: refusés -> invalid', () => {
-  assert.equal(parseSoundLink('[Tom]{data:text/html,xxx}').type, 'invalid');
-  assert.equal(parseSoundLink('[Tom]{file:///etc/passwd}').type, 'invalid');
-});
-
-// 8. HTML non interprété (label gardé littéral)
+// 9. HTML non interprété (label gardé littéral dans le segment)
 test('sound_link : HTML reçu dans le label non interprété', () => {
-  const p = parseSoundLink('[<b>bold</b>]{https://example.com}');
-  assert.equal(p.type, 'rich-link');
-  assert.equal(p.label, '<b>bold</b>'); // gardé littéral, pas interprété
+  const segs = parseSoundLink('[<b>bold</b>]{https://example.com}');
+  assert.equal(segs.length, 1);
+  assert.equal(segs[0].type, 'link');
+  assert.equal(segs[0].label, '<b>bold</b>'); // gardé littéral, pas interprété
 });
 
-// 9. URL simple historique toujours valide
-test('sound_link : URL simple historique -> plain-url', () => {
-  const p = parseSoundLink('https://example.com');
-  assert.equal(p.type, 'plain-url');
-  assert.equal(p.href, 'https://example.com');
+// 10. URL simple historique toujours valide (label null)
+test('sound_link : URL simple historique -> segment link label null', () => {
+  const segs = parseSoundLink('https://example.com');
+  assert.equal(segs.length, 1);
+  assert.equal(segs[0].type, 'link');
+  assert.equal(segs[0].label, null);
+  assert.equal(segs[0].href, 'https://example.com');
+});
+
+// 11. ordre exact des segments (multi-lien)
+test('sound_link : ordre exact des segments préservé', () => {
+  const segs = parseSoundLink('Avant [a]{https://x} milieu [b]{https://y} fin');
+  assert.deepEqual(segs.map((s) => s.type), ['text', 'link', 'text', 'link', 'text']);
+  assert.deepEqual(segs.map((s) => s.type === 'link' ? s.href : s.value), ['Avant ', 'https://x', ' milieu ', 'https://y', ' fin']);
+});
+
+// 11b. valeur vide -> [] (masquée)
+test('sound_link : valeur vide -> []', () => {
+  assert.deepEqual(parseSoundLink(''), []);
+  assert.deepEqual(parseSoundLink('   '), []);
+  assert.deepEqual(parseSoundLink(null), []);
+});
+
+// 11c. URL simple invalide sans crochet -> [] (masquée, compat historique)
+test('sound_link : URL simple invalide sans crochet -> []', () => {
+  assert.deepEqual(parseSoundLink('javascript:alert(1)'), []);
+  assert.deepEqual(parseSoundLink('not a url'), []);
 });
 
 // 10. rendu rich-link : prefix TextNode + <a> + suffix TextNode, visible

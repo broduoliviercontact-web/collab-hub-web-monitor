@@ -17,79 +17,83 @@ export function isSafeHttpUrl(url) {
 
 // --- Lot 5 (sound_link enrichi) : parseur PUR et testable ---------------------
 //
-// Syntaxe personnalisée (NON Markdown) :
-//   [texte cliquable]{URL} texte complémentaire
+// Syntaxe personnalisée (NON Markdown), un ou plusieurs liens par valeur :
+//   [texte cliquable]{URL} texte complémentaire [autre label]{autre URL} suite
 //
 // Règles :
-//   - un seul lien enrichi par valeur sound_link ;
-//   - texte avant (prefix) et après (suffix) autorisés ;
+//   - plusieurs liens enrichis autorisés dans une même valeur sound_link ;
+//   - texte avant, entre et après les liens autorisé ;
 //   - crochets réservés au label, accolades à l'URL (les parenthèses sont
 //     autorisées telles quelles dans l'URL, ex. Tom_Johnson_(composer)) ;
 //   - compatibilité avec les URL simples historiques (https://example.com) ;
-//   - la syntaxe Markdown classique [label](url) est abandonnée pour éviter
-//     les ambiguïtés avec les parenthèses présentes dans certaines URLs ;
+//   - la syntaxe Markdown classique [label](url) n'est PAS supportée (ambiguïté
+//     avec les parenthèses présentes dans certaines URLs) ;
 //   - seuls les protocoles http: et https: sont acceptés ;
 //   - aucun innerHTML, aucune interprétation de HTML reçu.
 //
-// Retourne un objet décrivant le rendu à appliquer :
-//   { type, href, label, prefix, suffix, raw, attemptedRich }
-// type :
-//   'plain-url'  -> URL simple historique valide (http/https)
-//   'rich-link'  -> [label]{url} valide, avec prefix/suffix optionnels
-//   'invalid'    -> valeur non vide mais non exploitable (syntaxe incomplète,
-//                   label/URL vide, protocole interdit, crochet/accolade
-//                   non équilibré). `attemptedRich` indique si la valeur
-//                   contenait '[' (syntaxe enrichie tentée).
-//   'empty'      -> valeur vide / blancs uniquement -> masquer le lien.
+// Retourne une LISTE de segments :
+//   [ { type: 'link', label, href }, { type: 'text', value }, ... ]
+//
+//   - segment 'link' : label (string, ou null pour une URL simple historique),
+//     href (string http/https). label null -> le rendu utilise « En savoir plus ».
+//   - segment 'text' : value (string), texte non cliquable.
+//
+// Cas particuliers :
+//   - valeur vide / non-chaîne -> []  (le rendu masque le lien) ;
+//   - URL simple historique valide -> [{ type:'link', label:null, href }] ;
+//   - URL simple invalide (ex. javascript:, sans crochet) -> [] (masquée,
+//     compat historique : aucun href dangereux créé) ;
+//   - un segment [label]{url} invalide (label/URL vide, crochet/accolade
+//     manquant, protocole interdit) -> émis en segment 'text' (texte brut non
+//     cliquable) SANS jeter le reste de la valeur ; les autres liens restent
+//     valides.
 export function parseSoundLink(value) {
-  if (typeof value !== 'string') {
-    return { type: 'invalid', href: null, label: null, prefix: null, suffix: null, raw: value, attemptedRich: false };
-  }
-  const raw = value;
-  if (raw.trim() === '') {
-    return { type: 'empty', href: null, label: null, prefix: null, suffix: null, raw };
+  if (typeof value !== 'string' || value.trim() === '') return [];
+
+  // Pas de crochet -> syntaxe URL simple historique (un seul lien possible).
+  if (!value.includes('[')) {
+    return isSafeHttpUrl(value) ? [{ type: 'link', label: null, href: value.trim() }] : [];
   }
 
-  const bracketStart = raw.indexOf('[');
-  if (bracketStart === -1) {
-    // Pas de crochet -> syntaxe URL simple historique.
-    if (isSafeHttpUrl(raw)) {
-      return { type: 'plain-url', href: raw.trim(), label: null, prefix: null, suffix: null, raw };
+  // Scan multi-liens. Les segments invalides deviennent du texte brut.
+  const segments = [];
+  let textBuf = '';
+  const flushText = () => { if (textBuf !== '') { segments.push({ type: 'text', value: textBuf }); textBuf = ''; } };
+  let i = 0;
+  while (i < value.length) {
+    if (value[i] !== '[') { textBuf += value[i]; i++; continue; }
+
+    // Tente de parser [label]{url} à partir de i.
+    const bracketEnd = value.indexOf(']', i + 1);
+    if (bracketEnd === -1) {
+      // Pas de ']' -> '[' littéral, on reprend après (un '[' ultérieur peut
+      // ouvrir un lien valide).
+      textBuf += value[i]; i++; continue;
     }
-    return { type: 'invalid', href: null, label: null, prefix: null, suffix: null, raw, attemptedRich: false };
+    const label = value.slice(i + 1, bracketEnd);
+    if (label.trim() === '' || value[bracketEnd + 1] !== '{') {
+      // Label vide ou structure incomplète (pas d'accolade après ']') -> le
+      // fragment '[...]' devient texte brut, on reprend après ']'.
+      textBuf += value.slice(i, bracketEnd + 1); i = bracketEnd + 1; continue;
+    }
+    const braceEnd = value.indexOf('}', bracketEnd + 2);
+    if (braceEnd === -1) {
+      // Pas d'accolade fermante -> '[' littéral, on reprend après '['.
+      textBuf += value[i]; i++; continue;
+    }
+    const href = value.slice(bracketEnd + 2, braceEnd);
+    if (href.trim() === '' || !isSafeHttpUrl(href)) {
+      // URL vide ou protocole interdit -> fragment '[label]{...}' en texte brut
+      // (jamais d'href dangereux créé), on reprend après '}'.
+      textBuf += value.slice(i, braceEnd + 1); i = braceEnd + 1; continue;
+    }
+    // Lien valide.
+    flushText();
+    segments.push({ type: 'link', label, href: href.trim() });
+    i = braceEnd + 1;
   }
-
-  // Syntaxe enrichie [label]{url}. Recherche le crochet fermant.
-  const bracketEnd = raw.indexOf(']', bracketStart + 1);
-  if (bracketEnd === -1) {
-    return { type: 'invalid', href: null, label: null, prefix: null, suffix: null, raw, attemptedRich: true };
-  }
-  const label = raw.slice(bracketStart + 1, bracketEnd);
-  if (label.trim() === '') {
-    return { type: 'invalid', href: null, label, prefix: raw.slice(0, bracketStart), suffix: null, raw, attemptedRich: true };
-  }
-  // L'URL doit commencer immédiatement après ']' par '{'.
-  if (raw[bracketEnd + 1] !== '{') {
-    return { type: 'invalid', href: null, label, prefix: raw.slice(0, bracketStart), suffix: null, raw, attemptedRich: true };
-  }
-  // L'URL est délimitée par les accolades : les parenthèses qu'elle contient
-  // (ex. Tom_Johnson_(composer)) sont prises telles quelles, sans équilibrage.
-  const braceEnd = raw.indexOf('}', bracketEnd + 2);
-  if (braceEnd === -1) {
-    return { type: 'invalid', href: null, label, prefix: raw.slice(0, bracketStart), suffix: null, raw, attemptedRich: true };
-  }
-  const href = raw.slice(bracketEnd + 2, braceEnd);
-  if (href.trim() === '') {
-    return { type: 'invalid', href: null, label, prefix: raw.slice(0, bracketStart), suffix: raw.slice(braceEnd + 1), raw, attemptedRich: true };
-  }
-  if (!isSafeHttpUrl(href)) {
-    // Protocole interdit (javascript:, data:, file:, etc.) -> jamais d'href
-    // dangereux créé. On tombe sur 'invalid' (rendu en texte brut non cliquable).
-    return { type: 'invalid', href: null, label, prefix: raw.slice(0, bracketStart), suffix: raw.slice(braceEnd + 1), raw, attemptedRich: true };
-  }
-  const prefix = raw.slice(0, bracketStart);
-  const suffix = raw.slice(braceEnd + 1);
-  return { type: 'rich-link', href: href.trim(), label, prefix, suffix, raw, attemptedRich: true };
+  flushText();
+  return segments;
 }
 
 const FIELD_TO_EL = {
@@ -129,28 +133,35 @@ export function renderField(header, value, els, doc = (typeof document !== 'unde
   }
 }
 
-// Applique le rendu sound_link depuis le parseur. JAMAIS d'innerHTML.
-//   plain-url  -> lien historique « En savoir plus » (http/https) ;
-//   rich-link  -> prefix (TextNode) + <a label> (target/rel) + suffix (TextNode) ;
-//   empty      -> masque le lien ;
-//   invalid + attemptedRich  -> texte brut non cliquable (la syntaxe enrichie
-//                 était tentée : on affiche la valeur reçue telle quelle, sans
-//                 jamais interpréter de HTML ni créer d'href) ;
-//   invalid + !attemptedRich -> URL simple invalide (ex. javascript:) : masquée
-//                 (compat historique), aucun href dangereux créé.
+// Applique le rendu sound_link depuis la liste de segments. JAMAIS d'innerHTML.
+//   [] (vide ou URL simple invalide sans crochet) -> masque le lien (compat
+//      historique : aucun href dangereux créé) ;
+//   [{ link, label:null, href }] (URL simple historique valide) -> lien
+//      original « En savoir plus » (réutilise els.link) ;
+//   segments multiples (rich) -> TextNode pour 'text', <a> pour 'link', via
+//      les APIs DOM. Les segments invalides ont déjà été convertis en 'text'
+//      par le parseur -> texte brut non cliquable, jamais de HTML interprété.
 function applyLink(value, els, doc) {
-  const parsed = parseSoundLink(value);
+  const segments = parseSoundLink(value);
   const wrap = els.linkWrap;
 
-  if (parsed.type === 'empty') {
-    if (wrap) wrap.hidden = true;
+  if (segments.length === 0) {
+    // Valeur vide OU URL simple invalide (javascript:, data:, etc. sans crochet)
+    // -> masquée (compat historique). Aucun href dangereux créé.
     if (els.link && els.link.setAttribute) els.link.setAttribute('href', '#');
+    if (wrap) wrap.hidden = true;
+    if (typeof value === 'string' && value.trim() !== '') {
+      console.warn(`[Collab-Hub] sound_link ignoré (URL invalide ou protocole non http/https) : ${value}`);
+    }
     return;
   }
 
-  if (parsed.type === 'plain-url') {
+  // URL simple historique : un seul lien sans label -> on réutilise le <a>
+  // original (présent dans index.html) avec « En savoir plus ».
+  if (segments.length === 1 && segments[0].type === 'link' && segments[0].label == null) {
+    const { href } = segments[0];
     if (els.link && els.link.setAttribute) {
-      els.link.setAttribute('href', parsed.href);
+      els.link.setAttribute('href', href);
       els.link.setAttribute('target', '_blank');
       els.link.setAttribute('rel', 'noopener noreferrer');
     }
@@ -164,50 +175,30 @@ function applyLink(value, els, doc) {
     return;
   }
 
-  if (parsed.type === 'rich-link') {
-    if (!doc || typeof doc.createElement !== 'function' || typeof doc.createTextNode !== 'function') {
-      // Environnement sans DOM (ex. test minimal) : fallback sûr -> masqué.
-      if (wrap) wrap.hidden = true;
-      return;
-    }
-    const a = doc.createElement('a');
-    a.setAttribute('href', parsed.href);
-    a.setAttribute('target', '_blank');
-    a.setAttribute('rel', 'noopener noreferrer');
-    a.textContent = parsed.label; // TextNode : le HTML éventuel du label n'est JAMAIS interprété.
-    const parts = [];
-    if (parsed.prefix) parts.push(doc.createTextNode(parsed.prefix));
-    parts.push(a);
-    if (parsed.suffix) parts.push(doc.createTextNode(parsed.suffix));
-    if (wrap && typeof wrap.replaceChildren === 'function') {
-      wrap.replaceChildren(...parts);
-    }
-    if (wrap) wrap.hidden = false;
-    return;
-  }
-
-  // parsed.type === 'invalid'
-  if (parsed.attemptedRich) {
-    // Syntaxe enrichie incomplète / protocole interdit : on affiche la valeur
-    // brute en texte non cliquable (TextNode -> HTML jamais interprété, aucun
-    // href créé). Choix documenté : plutôt que masquer, on rend le texte lisible
-    // sans danger pour l'utilisateur.
-    if (doc && typeof doc.createTextNode === 'function' && wrap && typeof wrap.replaceChildren === 'function') {
-      wrap.replaceChildren(doc.createTextNode(parsed.raw));
-      wrap.hidden = false;
-      return;
-    }
+  // Rendu enrichi (un ou plusieurs liens labellisés + texte). Build via APIs DOM.
+  if (!doc || typeof doc.createElement !== 'function' || typeof doc.createTextNode !== 'function') {
+    // Environnement sans DOM (ex. test minimal sans doc) : fallback sûr -> masqué.
     if (wrap) wrap.hidden = true;
     return;
   }
-
-  // URL simple invalide (ex. javascript:, data:, "not a url") : masquée
-  // (compat historique) + avertissement discret. Aucun href dangereux créé.
-  if (els.link && els.link.setAttribute) els.link.setAttribute('href', '#');
-  if (wrap) wrap.hidden = true;
-  if (parsed.raw && parsed.raw.trim() !== '') {
-    console.warn(`[Collab-Hub] sound_link ignoré (URL invalide ou protocole non http/https) : ${parsed.raw}`);
+  const parts = [];
+  for (const seg of segments) {
+    if (seg.type === 'link') {
+      const a = doc.createElement('a');
+      a.setAttribute('href', seg.href);
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+      // TextNode : le HTML éventuel du label n'est JAMAIS interprété.
+      a.textContent = seg.label == null ? 'En savoir plus' : seg.label;
+      parts.push(a);
+    } else {
+      parts.push(doc.createTextNode(seg.value));
+    }
   }
+  if (wrap && typeof wrap.replaceChildren === 'function') {
+    wrap.replaceChildren(...parts);
+  }
+  if (wrap) wrap.hidden = false;
 }
 
 // Micro-transition discrète (fondu). Respecte prefers-reduced-motion via CSS.

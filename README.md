@@ -119,11 +119,14 @@ npm run dev                # http://localhost:5173 (ou port suivant)
 5. Vérifier la mise à jour temps réel des trois blocs.
 6. Modifier uniquement le titre dans Max -> seul le titre change sur la page.
 7. Tester une URL valide (`https://…`) -> lien « En savoir plus » ; une URL
-   `javascript:`/vide -> lien masqué. Syntaxe enrichie `sound_link` (Lot 5) :
-   `[Tom Johnson]{https://example.com} aime les nombres.` -> seul « Tom Johnson »
-   est cliquable, texte avant/après conservé. `javascript:`/`data:`/`file:` et le
-   HTML reçu ne sont **jamais** interprétés (rendu via TextNode + `<a>`, aucun
-   `innerHTML`). Voir « sound_link enrichi » ci-dessous.
+   `javascript:`/vide -> lien masqué. Syntaxe enrichie `sound_link` (Lot 5),
+   un ou plusieurs liens `[label]{url}` par valeur :
+   `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres, et [Music for 88]{https://example.com/music-for-88} est une œuvre.`
+   -> « Tom Johnson » et « Music for 88 » cliquables, texte avant/entre/après
+   normal. `javascript:`/`data:`/`file:` et le HTML reçu ne sont **jamais**
+   interprétés (rendu via TextNode + `<a>`, aucun `innerHTML`) ; un lien
+   invalide parmi plusieurs devient texte brut (le reste est conservé). Voir
+   « sound_link enrichi » ci-dessous.
 8. Couper puis rétablir le réseau -> la dernière valeur reste affichée, les
    nouvelles valeurs arrivent après reconnexion.
 9. Tester le rendu mobile via les DevTools.
@@ -197,9 +200,10 @@ contenu, puis les publications en temps réel le mettent à jour.
   inconnu, type non string, champ trop long) est **ignoré** → fallback sur les
   valeurs par défaut. `sound_link` est **repassé par la validation URL
   existante** au rendu (http/https uniquement, `javascript:`/`data:`/vide →
-  lien masqué). La syntaxe enrichie `[label]{url}` (Lot 5) est elle aussi
-  validée (http/https uniquement ; syntaxe incomplète ou protocole interdit →
-  texte brut non cliquable, jamais de HTML interprété).
+  lien masqué). La syntaxe enrichie `[label]{url}` (Lot 5, un ou plusieurs
+  liens par valeur) est elle aussi validée (http/https uniquement ; syntaxe
+  incomplète ou protocole interdit → segment en texte brut non cliquable, le
+  reste de la valeur est conservé, jamais de HTML interprété).
 - **Sécurité** : aucune donnée HTML, aucun `innerHTML` (rendu via
   `textContent`/`setAttribute`/`createTextNode`), rien n'est envoyé vers un
   serveur. En cas d'erreur d'accès au storage, l'application ne casse pas.
@@ -418,18 +422,18 @@ v1.1.2 et bouton inchangés). Voir `docs/bmad/15-public-stream-status.md`.
 changement du patch Max ni des 5 champs) :
 
 - **sound_link enrichi** — le header `sound_link` existe toujours ; la page
-  accepte en plus la syntaxe personnalisée `[label]{url}` (texte avant/après
-  autorisé, un seul lien enrichi par valeur). Exemple :
-  `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres.`
-  → rendu « Tom Johnson aime les nombres. » avec seul « Tom Johnson » cliquable.
+  accepte en plus la syntaxe personnalisée `[label]{url}`, avec **un ou
+  plusieurs** liens par valeur et du texte avant/entre/après. Exemple :
+  `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres, et [Music for 88]{https://example.com/music-for-88} est une œuvre.`
+  → « Tom Johnson » et « Music for 88 » cliquables, texte intermédiaire normal.
   Les URL simples historiques (`https://example.com`) restent valides
   (« En savoir plus »). La syntaxe Markdown `[label](url)` n'est **pas**
   supportée (ambiguïté avec les parenthèses des URLs). Sécurité : aucun
   `innerHTML`, HTML reçu jamais interprété (TextNode + `<a>` via APIs DOM),
   seuls `http:`/`https:` acceptés (`javascript:`/`data:`/`file:` refusés),
-  `target="_blank"` + `rel="noopener noreferrer"`. Syntaxe incomplète ou
-  protocole interdit → texte brut non cliquable. Logique dans
-  `src/ui/renderSoundInfo.js` (`parseSoundLink`).
+  `target="_blank"` + `rel="noopener noreferrer"`. Un lien invalide parmi
+  plusieurs devient texte brut (le reste de la valeur est conservé). Logique
+  dans `src/ui/renderSoundInfo.js` (`parseSoundLink` → liste de segments).
 
 - **Compteur public d'auditeurs** — la page publique affiche, près du bouton
   « ÉCOUTER LE DIRECT », un indicateur discret : `0 auditeur` / `1 auditeur` /

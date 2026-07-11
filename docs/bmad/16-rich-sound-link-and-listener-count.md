@@ -1,6 +1,7 @@
 # Lot 5 — sound_link enrichi + compteur public d'auditeurs
 
-Date : 2026-07-11. Statut : implémenté (commit `feat: add rich sound links and public listener count`).
+Date : 2026-07-11. Statut : implémenté (commits `feat: add rich sound links and
+public listener count` puis `feat: allow multiple rich links in sound_link`).
 **Pas de tag/release** tant que la validation manuelle n'est pas faite.
 
 ## Objectif
@@ -21,19 +22,21 @@ Aucun nouveau header Max, aucune modification du patch
 
 ### Syntaxe
 
-Règle : `[label]{url}` avec texte optionnel avant et après. Un seul lien enrichi
-par valeur `sound_link`.
+Règle : `[label]{url}`, avec **un ou plusieurs** liens enrichis par valeur
+`sound_link`, et du texte autorisé avant, entre et après les liens.
 
 Exemples valides :
 
 ```
-[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres.
+[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres, et [Music for 88]{https://example.com/music-for-88} est une œuvre intéressante.
 Découvrir [Tom Johnson]{https://example.com}.
-Voir [le site officiel]{https://example.com}
+Voir [le site officiel]{https://example.com} puis [un second]{https://example.org}.
 ```
 
-Rendu du premier exemple : « Tom Johnson aime les nombres. » avec seul
-« Tom Johnson » cliquable.
+Rendu du premier exemple : « Tom Johnson aime les nombres, et Music for 88 est
+une œuvre intéressante. » avec « Tom Johnson » et « Music for 88 » cliquables,
+le texte intermédiaire (« aime les nombres, et ») et final (« est une œuvre
+intéressante. ») restant normaux (non cliquables).
 
 Compatibilité historique : une URL simple `https://example.com` reste valide et
 affiche le lien « En savoir plus ».
@@ -60,42 +63,54 @@ quellement.
 | Cas | Rendu |
 |-----|-------|
 | URL simple valide (http/https) | lien « En savoir plus » (historique) |
-| `[label]{url}` valide | prefix TextNode + `<a label>` + suffix TextNode |
+| `[label]{url}` valide(s) (un ou plusieurs) | TextNode (texte) + `<a label>` (liens), dans l'ordre |
 | Valeur vide / blancs | lien masqué |
-| Syntaxe enrichie incomplète (label/URL vide, crochet/accolade manquant) | texte brut non cliquable (visible) |
-| Protocole interdit dans `[label]{...}` | texte brut non cliquable (jamais d'href dangereux) |
-| URL simple invalide (`javascript:`, `data:`, texte non-URL) | lien masqué (compat historique) + warning console |
+| Segment `[label]{url}` invalide (label/URL vide, crochet/accolade manquant, protocole interdit) | segment en texte brut non cliquable (visible), le reste de la valeur est conservé |
+| URL simple invalide (`javascript:`, `data:`, texte non-URL, sans crochet) | lien masqué (compat historique) + warning console |
 
-Choix documenté : pour la syntaxe enrichie tentée mais invalide, on affiche la
-valeur en texte brut plutôt que de la masquer — l'utilisateur voit le contenu
-sans danger (TextNode, aucun href créé). Pour une URL simple invalide, on garde
-le masquage historique (aucun href dangereux créé).
+Choix documenté : pour un segment enrichi invalide parmi plusieurs, on l'émet
+en texte brut et **on conserve le reste** de la valeur (les autres liens
+restent valides) — l'utilisateur voit le contenu sans danger (TextNode, aucun
+href créé), on ne jette pas toute la valeur. Pour une URL simple invalide (sans
+crochet), on garde le masquage historique (aucun href dangereux créé).
 
 ### Parseur — `parseSoundLink(value)`
 
-Pur, testable, dans `src/ui/renderSoundInfo.js`. Retourne :
+Pur, testable, dans `src/ui/renderSoundInfo.js`. Retourne une **liste de
+segments** :
 
 ```js
-{
-  type: "plain-url" | "rich-link" | "invalid" | "empty",
-  href,        // string (http/https) ou null
-  label,       // string (rich) ou null
-  prefix,      // texte avant le lien (rich) ou null
-  suffix,      // texte après le lien (rich) ou null
-  raw,         // valeur reçue
-  attemptedRich // bool : la valeur contenait '[' (syntaxe enrichie tentée)
-}
+[
+  { type: "link", label, href },   // label : string, ou null (URL simple historique)
+  { type: "text", value },         // texte non cliquable
+  ...
+]
 ```
+
+- segment `link` : `label` (string, ou `null` pour une URL simple
+  historique → le rendu utilise « En savoir plus »), `href` (string http/https) ;
+- segment `text` : `value` (string), texte non cliquable (y compris les
+  fragments enrichis invalides, reconvertis en texte brut par le parseur).
+
+Cas particuliers : valeur vide / non-chaîne → `[]` ; URL simple historique
+valide → `[{ type:'link', label:null, href }]` ; URL simple invalide sans
+crochet (`javascript:`, etc.) → `[]` (masquée, compat historique) ; un segment
+enrichi invalide → émis en `text` (le reste est conservé, aucun href
+dangereux).
 
 ### Tests (partie A)
 
-19 tests couvrent le parseur et le rendu : `[label]{url}` valide, URL avec
-parenthèses, texte avant/après, accolade/crochet fermant manquant, label vide,
-URL vide, `javascript:`/`data:`/`file:` refusés, HTML non interprété, URL simple
-historique, rendu rich-link (TextNode + `<a>` + `target`/`rel`), aucun
-`innerHTML` (piège qui lève si tenté), rendu plain-url, syntaxe invalide en
-texte brut, URL simple invalide masquée, valeur vide masquée, compat
-historique.
+24 tests couvrent le parseur et le rendu. Les 12 cas obligatoires du parseur
+multi-liens : (1) deux liens valides, (2) trois liens valides, (3) texte
+avant/entre/après, (4) URL avec parenthèses préservée, (5) un lien valide +
+un lien `javascript:` invalide (le reste conservé en texte brut), (6) accolade
+fermante manquante, (7) label vide, (8) URL vide, (9) HTML non interprété,
+(10) URL simple historique toujours valide, (11) ordre exact des segments,
+(12) aucun `innerHTML` au rendu. Plus : crochet manquant, `data:`/`file:`
+refusés, valeur vide → `[]`, URL simple invalide sans crochet → `[]`, et les 9
+tests de rendu (rich-link via APIs DOM, `target`/`rel`, aucun `innerHTML`
+piège, plain-url « En savoir plus », syntaxe invalide en texte brut, URL simple
+invalide masquée, valeur vide masquée, compat historique via `renderField`).
 
 ## Partie B — compteur public d'auditeurs
 
@@ -203,7 +218,7 @@ non-régression stream-card debug-only, register/deliver `stream_listener_count`
 
 ## Validation automatisée
 
-`npm run check` vert : 444 tests `node:test` (385 existants + 59 nouveaux),
+`npm run check` vert : 448 tests `node:test` (385 existants + 63 nouveaux),
 licence, tracked, secrets (`check-livekit-secrets` vert), maxpat, build Vite
 propre.
 
@@ -216,12 +231,15 @@ propre.
 5. Fermer le dernier → `0 auditeur`.
 6. Couper/rétablir le réseau côté performer → le compteur se recalcule.
 7. Envoyer un `sound_link` URL simple → lien « En savoir plus ».
-8. Envoyer le `sound_link` enrichi `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres.`
-   → seul « Tom Johnson » est cliquable, texte avant/après conservé.
+8. Envoyer le `sound_link` enrichi multi-liens `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres, et [Music for 88]{https://example.com/music-for-88} est une œuvre.`
+   → « Tom Johnson » et « Music for 88 » cliquables, texte avant/entre/après
+   normal (non cliquable).
 9. Envoyer un `sound_link` contenant du HTML (`[<b>bold</b>]{https://example.com}`)
    → le label s'affiche en texte littéral (`<b>bold</b>`), jamais interprété.
-10. Envoyer un `sound_link` `javascript:`/`data:` → refusé (texte brut ou masqué,
-    jamais de lien dangereux).
+10. Envoyer un `sound_link` mélangeant un lien valide et un lien `javascript:`/`data:`
+    (`[a]{https://x} [b]{javascript:alert(1)}`) → « a » cliquable, le fragment
+    invalide affiché en texte brut (le reste conservé, jamais de lien
+    dangereux).
 11. `?debug=1` : champs compteur cohérents côté public et Control Room ; aucune
     identité d'auditeur visible.
 
