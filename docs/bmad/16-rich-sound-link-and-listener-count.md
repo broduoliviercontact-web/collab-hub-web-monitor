@@ -1,7 +1,8 @@
 # Lot 5 — sound_link enrichi + compteur public d'auditeurs
 
 Date : 2026-07-11. Statut : implémenté (commits `feat: add rich sound links and
-public listener count` puis `feat: allow multiple rich links in sound_link`).
+public listener count`, `feat: allow multiple rich links in sound_link`, puis
+hotfix `fix: publish live listener count through Collab-Hub`).
 **Pas de tag/release** tant que la validation manuelle n'est pas faite.
 
 ## Objectif
@@ -168,6 +169,23 @@ Recalcul du compteur côté publisher (`src/audio/livekitPublisher.js`) :
 - après `reconnected` (la Map distante peut avoir changé) ;
 - `notify()` uniquement si le compte change (pas de notification superflue).
 
+**Propagation & publication immédiate (hotfix)** : le compte transite par
+`liveListenerCount` dans le snapshot du publisher → **propagé dans le snapshot
+du controller** (`controlRoomController.js`, champ `liveListenerCount`) → lu par
+`streamPresencePublisher.update`. La page Control Room appelle
+`streamPublisher.update(snap, snap.meter)` à **chaque** changement de snapshot
+(`onSnapshot`), pas seulement au tick du VU-mètre : un changement de compteur
+(participant connect/disconnect/reconnected → publisher notify → controller
+notify → `onSnapshot`) est donc publié **immédiatement**, hors throttle. Les
+transitions onAir (start/stop diffusion) sont également publiées immédiatement.
+Le tick du VU-mètre continue à piloter `level`/`peak` en continu ; `update` est
+idempotent vis-à-vis du throttle (countChanged/onAirTransition forcent l'émission).
+
+Une **première valeur** `[0]` est livrée dès le chargement de la Control Room
+(premier `onSnapshot` → `onAirTransition null→0` → emit), juste après
+l'enregistrement du header par `publishClient.registerInitial()` (qui enregistre
+les 5 `STREAM_HEADERS` à la connexion, et les réenregistre après reconnexion).
+
 ### Réception page publique
 
 `streamStatus` (`src/state/streamStatus.js`) ingère `stream_listener_count` :
@@ -183,10 +201,12 @@ section listener et met à jour `textContent` uniquement quand le libellé chang
 
 ### Diagnostics `?debug=1`
 
-- **Control Room** (debug pre) : `liveListenerCount` (via snapshot publisher),
-  `streamPresence.lastPublishedListenerCount`,
-  `streamPresence.lastListenerCountPublishedAt`,
-  `streamPresence.listenerCountPublishCount`.
+- **Control Room** (debug pre) : objet `listenerCount` dédié avec
+  `streamListenerHeaderRegistered` (header enregistré sur Collab-Hub via
+  `publishClient.isRegistered`), `liveListenerCount` (compte courant issu du
+  snapshot publisher → controller), `lastPublishedListenerCount`,
+  `listenerCountPublishCount` ; plus `streamPresence.*` et
+  `collabHubPublisher.registeredHeaders` pour le contexte.
 - **Page publique** (panneau Flux direct) : `auditeurs (raw)`, `auditeurs (count)`,
   `auditeurs (known)`, `auditeurs (label)`, `auditeurs reçu à`.
 
@@ -194,7 +214,7 @@ section listener et met à jour `textContent` uniquement quand le libellé chang
 
 ### Tests (partie B)
 
-40 tests couvrent : `countLiveListeners` (null/1/N, performer non compté,
+44 tests couvrent : `countLiveListeners` (null/1/N, performer non compté,
 participant inconnu, Map, objet plat, Set, préfixe), `normalizeCount`
 (décimal/négatif/invalide), `formatListenerCount` (singulier/pluriel),
 `streamStatus` (ingestion valide/0/1/N/décimal/invalide/négatif/stale/jamais
@@ -204,7 +224,9 @@ aucune identité dans le snapshot), `streamPresencePublisher` (publie `[N]`,
 changement → publication immédiate, stable → pas de publish, `stop` → `[0]`,
 hors antenne → `[0]`, diagnostics), UI (span présent + `aria-live` + classe,
 visible hors debug, aucune identité), routage `stream_listener_count`,
-non-régression stream-card debug-only, register/deliver `stream_listener_count`.
+non-régression stream-card debug-only, register/deliver `stream_listener_count`,
+**hotfix** : propagation `liveListenerCount` publisher → controller (0/1/N,
+défaut 0 si absent, `stopBroadcast` → 0, aucune identité/SID dans le snapshot).
 
 ## Non-régression
 
@@ -218,7 +240,7 @@ non-régression stream-card debug-only, register/deliver `stream_listener_count`
 
 ## Validation automatisée
 
-`npm run check` vert : 448 tests `node:test` (385 existants + 63 nouveaux),
+`npm run check` vert : 452 tests `node:test` (385 existants + 67 nouveaux),
 licence, tracked, secrets (`check-livekit-secrets` vert), maxpat, build Vite
 propre.
 

@@ -70,6 +70,10 @@ export function createControlRoomController({
       published: p.published,
       reconnectCount: p.reconnectCount,
       liveSince: p.liveSince,
+      // Lot 5 (partie B) : nombre d'auditeurs distants (identity "listener-*"),
+      // propagé depuis le publisher jusqu'au streamPresencePublisher. Entier
+      // >= 0 ; aucune identité/SID d'auditeur n'est exposé (juste le compte).
+      liveListenerCount: p.liveListenerCount ?? 0,
       error,
       lastActionResult,
       updatedAt: now(),

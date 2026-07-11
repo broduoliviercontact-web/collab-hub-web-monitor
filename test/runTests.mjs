@@ -2433,7 +2433,7 @@ function makeFakeAudioEngine({
 
 // --- Faux publisher (boundary contrôleur) ---
 function makeFakePublisher({ state = 'idle', fail = null } = {}) {
-  let s = { state, roomName: null, identity: null, participantSid: null, trackSid: null, connected: false, published: false, reconnectCount: 0, lastError: null, connectedAt: null, liveSince: null };
+  let s = { state, roomName: null, identity: null, participantSid: null, trackSid: null, connected: false, published: false, reconnectCount: 0, lastError: null, connectedAt: null, liveSince: null, liveListenerCount: 0 };
   const listeners = new Set();
   const calls = { connect: 0, stop: 0, destroy: 0 };
   let lastConnectArgs = null;
@@ -2448,7 +2448,7 @@ function makeFakePublisher({ state = 'idle', fail = null } = {}) {
       s = { ...s, state: 'live', connected: true, published: true, trackSid: 'pub-1', identity: 'performer-1', roomName: 'main', connectedAt: 1000, liveSince: 1000 };
       notify(); return s;
     },
-    async stop() { calls.stop++; s = { state: 'stopped', roomName: null, identity: null, participantSid: null, trackSid: null, connected: false, published: false, reconnectCount: 0, lastError: null, connectedAt: null, liveSince: null }; notify(); },
+    async stop() { calls.stop++; s = { state: 'stopped', roomName: null, identity: null, participantSid: null, trackSid: null, connected: false, published: false, reconnectCount: 0, lastError: null, connectedAt: null, liveSince: null, liveListenerCount: 0 }; notify(); },
     async destroy() { calls.destroy++; s = { ...s, state: 'stopped' }; notify(); },
     getSnapshot() { return { ...s }; },
     subscribe(l) { listeners.add(l); return () => listeners.delete(l); },
@@ -2560,6 +2560,46 @@ test('crController : snapshot ne contient jamais password/token/clé', () => {
   assert.equal('token' in s, false);
   assert.equal('apiKey' in s, false);
   assert.equal('apiSecret' in s, false);
+});
+
+// Lot 5 (partie B) hotfix : liveListenerCount (entier >= 0, aucune identité)
+// doit être propagé depuis le publisher jusqu'au snapshot du controller, sinon
+// streamPresencePublisher n'émet jamais le vrai compte (reste à 0).
+test('crController : liveListenerCount propagé depuis le publisher -> snapshot', () => {
+  const p = makeFakePublisher({ state: 'live' });
+  const c = makeController({ audio: readyAudio(), publisher: p });
+  assert.equal(c.getSnapshot().liveListenerCount, 0);
+  p._set({ liveListenerCount: 2 });
+  assert.equal(c.getSnapshot().liveListenerCount, 2);
+  p._set({ liveListenerCount: 0 });
+  assert.equal(c.getSnapshot().liveListenerCount, 0);
+});
+
+test('crController : liveListenerCountAbsent -> 0 par défaut (pas undefined)', () => {
+  // Publisher sans champ liveListenerCount (ex. vieille implé) -> 0 sûr.
+  const p = makeFakePublisher({ state: 'live' });
+  delete p.getSnapshot;
+  p.getSnapshot = () => ({ state: 'live', connected: true, published: true, reconnectCount: 0 });
+  const c = makeController({ audio: readyAudio(), publisher: p });
+  assert.equal(c.getSnapshot().liveListenerCount, 0);
+});
+
+test('crController : stop diffuseur -> liveListenerCount revenu à 0', async () => {
+  const p = makeFakePublisher({ state: 'live' });
+  p._set({ liveListenerCount: 3 });
+  const c = makeController({ audio: readyAudio(), publisher: p });
+  assert.equal(c.getSnapshot().liveListenerCount, 3);
+  await c.stopBroadcast();
+  assert.equal(c.getSnapshot().liveListenerCount, 0);
+});
+
+test('crController : snapshot ne contient aucune identité/SID d auditeur', () => {
+  const p = makeFakePublisher({ state: 'live' });
+  p._set({ liveListenerCount: 2 });
+  const s = makeController({ audio: readyAudio(), publisher: p }).getSnapshot();
+  assert.equal('listenerIdentities' in s, false);
+  assert.equal('participantSids' in s, false);
+  assert.equal(typeof s.liveListenerCount, 'number');
 });
 
 test('crController : requestPermission appelle audioEngine + ok', async () => {

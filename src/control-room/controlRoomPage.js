@@ -110,6 +110,14 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
     renderControlRoom(snap, els, { debug });
     updateBroadcastEnabled(els);
     if (snap.audioState === 'capturing') startMeter(); else stopMeter();
+    // Lot 5 (partie B) : publication immédiate sur toute transition qui n'attend
+    // pas le prochain tick du VU-mètre — notamment un changement du compteur
+    // d'auditeurs (participantConnected/Disconnected/reconnected -> publisher
+    // notify -> controller notify -> ici) ou une transition onAir (start/stop
+    // diffusion). streamPublisher.update est idempotent vis-à-vis du throttle ;
+    // countChanged/onAirTransition forcent l'émission hors throttle. Le tick du
+    // VU-mètre (startMeter) continue à piloter level/peak en continu.
+    streamPublisher.update(snap, snap.meter);
     // Expiration de session : le token performer est refusé (401) -> token_unauthorized.
     // On ne signale qu'une fois, puis on rend la main au gate (retour au login).
     if (!sessionExpiredSignaled && snap.error && snap.error.code === 'token_unauthorized') {
@@ -117,12 +125,25 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
       if (typeof onSessionExpired === 'function') onSessionExpired();
     }
     if (debug && debugPre) {
+      const sp = streamPublisher.getDiagnostics();
+      const cp = streamConn && typeof streamConn.getDiagnostics === 'function'
+        ? streamConn.getDiagnostics()
+        : { connected: false, note: 'connexion non résolue' };
       debugPre.textContent = JSON.stringify({
         ...snap,
-        streamPresence: streamPublisher.getDiagnostics(),
-        collabHubPublisher: streamConn && typeof streamConn.getDiagnostics === 'function'
-          ? streamConn.getDiagnostics()
-          : { connected: false, note: 'connexion non résolue' },
+        streamPresence: sp,
+        collabHubPublisher: cp,
+        // Lot 5 (partie B) : diagnostic dédié au compteur d'auditeurs. Aucune
+        // identité/SID d'auditeur (juste le compte + l'état d'enregistrement du
+        // header sur Collab-Hub).
+        listenerCount: {
+          streamListenerHeaderRegistered:
+            !!(streamConn && typeof streamConn.isRegistered === 'function'
+              && streamConn.isRegistered('stream_listener_count')),
+          liveListenerCount: snap.liveListenerCount ?? 0,
+          lastPublishedListenerCount: sp.lastPublishedListenerCount,
+          listenerCountPublishCount: sp.listenerCountPublishCount,
+        },
       }, null, 2);
     }
   }
