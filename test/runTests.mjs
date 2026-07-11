@@ -4391,3 +4391,199 @@ test('streamStatus : seuils et constantes stables', () => {
   assert.equal(parseTimestamp('2026-07-11T09:00:00Z') != null, true);
   assert.equal(parseTimestamp('garbage'), null);
 });
+
+// ============================================================
+// Hotfix Lot 4G — Protocole Collab-Hub register/deliver
+// (src/collabHub/publishClient.js). Prouve le cycle register/deliver :
+// 1er publish d'un header = enregistrement (pas de push), publish subséquents =
+// livraison. Reconnexion -> réenregistrement. File d'attente avant connexion.
+// ============================================================
+import { connectCollabHubPublisher } from '../src/collabHub/publishClient.js';
+
+// Faux socket publication : capture les emit('control', ...) + pilote connect/disconnect.
+function fakePublishSocket() {
+  const handlers = {};
+  const emitted = [];
+  return {
+    connected: false,
+    id: 'sock-1',
+    on(evt, fn) { handlers[evt] = fn; },
+    emit(evt, payload) { emitted.push({ evt, ...(payload || {}) }); },
+    disconnect() {},
+    fire(evt) { if (handlers[evt]) handlers[evt](); },
+    setConnected(c) { this.connected = c; },
+    emitted,
+  };
+}
+
+// Factory de publisher testable : socket fake, horloge injectable, setTimeout synchrone.
+async function makeChPublisher({ headers, clock } = {}) {
+  const sock = fakePublishSocket();
+  const pub = await connectCollabHubPublisher({
+    serverUrl: 'https://server.collab-hub.io',
+    namespace: 'hub',
+    username: 'test',
+    headers,
+    ioFactory: () => sock,
+    now: clock ? clock.now : () => 1000,
+    setTimeoutFn: (fn) => fn(), // synchrone -> flush déterministe après register
+  });
+  return { pub, sock };
+}
+function controls(sock, header) {
+  return sock.emitted.filter((e) => e.evt === 'control' && e.header === header);
+}
+
+// H1. pas de deliver avant connexion (mise en file d'attente)
+test('publishClient : aucun deliver avant connexion, valeur mise en file', async () => {
+  const { pub, sock } = await makeChPublisher({});
+  pub.publish('stream_onair', [1]);
+  assert.equal(sock.emitted.length, 0, 'rien émis avant connexion');
+  const d = pub.getDiagnostics();
+  assert.equal(d.connected, false);
+  assert.deepEqual(d.pendingHeaders, ['stream_onair']);
+});
+
+// H2. chaque header enregistré une seule fois à la connexion
+test('publishClient : enregistre chaque header une fois à la connexion', async () => {
+  const { pub, sock } = await makeChPublisher({});
+  sock.setConnected(true); sock.fire('connect');
+  const ctl = sock.emitted.filter((e) => e.evt === 'control');
+  assert.equal(ctl.length, 4, '4 publish d enregistrement (un par header)');
+  for (const h of STREAM_HEADERS) {
+    assert.equal(controls(sock, h).length, 1, `${h} enregistré une fois`);
+  }
+  assert.deepEqual(pub.getDiagnostics().registeredHeaders.sort(), [...STREAM_HEADERS].sort());
+});
+
+// H3. register avant deliver (header non pré-enregistré)
+test('publishClient : register avant deliver (1er publish enregistre puis livre)', async () => {
+  const { pub, sock } = await makeChPublisher({ headers: ['stream_onair'] }); // 1 seul pré-enregistré
+  sock.setConnected(true); sock.fire('connect'); // register stream_onair
+  const before = sock.emitted.length;
+  pub.publish('stream_level', [0.5]); // stream_level non enregistré -> register puis deliver
+  const lvl = controls(sock, 'stream_level');
+  assert.equal(lvl.length, 2, 'un register + un deliver');
+  assert.deepEqual(lvl[0].values, [0], 'register avec valeur neutre (no push)');
+  assert.deepEqual(lvl[1].values, [0.5], 'deliver avec la valeur publiée');
+  assert.ok(pub.isRegistered('stream_level'));
+  assert.equal(before + 2, sock.emitted.length);
+});
+
+// H4. première valeur livrée après enregistrement
+test('publishClient : 1re valeur livrée après register (flush pending)', async () => {
+  const { pub, sock } = await makeChPublisher({ headers: [] }); // aucun pré-enregistré
+  sock.setConnected(true); sock.fire('connect');
+  pub.publish('stream_onair', [1]);
+  const onair = controls(sock, 'stream_onair');
+  assert.equal(onair.length, 2);
+  assert.deepEqual(onair[1].values, [1], 'la valeur livrée est bien [1]');
+  assert.equal(pub.getDiagnostics().deliverCount >= 1, true);
+});
+
+// H5. mises à jour multiples ne réenregistrent pas
+test('publishClient : updates multiples ne réenregistrent pas (idempotent)', async () => {
+  const { pub, sock } = await makeChPublisher({});
+  sock.setConnected(true); sock.fire('connect'); // 4 registers
+  const registersAfterConnect = sock.emitted.length;
+  pub.publish('stream_onair', [1]);
+  pub.publish('stream_onair', [0.6]);
+  pub.publish('stream_onair', [0.3]);
+  const onair = controls(sock, 'stream_onair');
+  assert.equal(onair.length, 4, '1 register + 3 delivers, pas de re-register');
+  assert.deepEqual(onair.slice(1).map((e) => e.values), [[1], [0.6], [0.3]]);
+  assert.equal(sock.emitted.length, registersAfterConnect + 3, 'aucun emit parasite');
+});
+
+// H6. reconnexion -> réenregistrement
+test('publishClient : reconnexion réenregistre les headers', async () => {
+  const { pub, sock } = await makeChPublisher({});
+  sock.setConnected(true); sock.fire('connect');   // 4 registers
+  sock.setConnected(false); sock.fire('disconnect');
+  assert.equal(pub.getDiagnostics().connected, false);
+  assert.equal(pub.getDiagnostics().registeredHeaders.length, 0, 'registered vidé au disconnect');
+  sock.setConnected(true); sock.fire('connect');   // 4 nouveaux registers
+  const ctl = sock.emitted.filter((e) => e.evt === 'control');
+  assert.equal(ctl.length, 8, '4 + 4 registers (reconnexion)');
+  for (const h of STREAM_HEADERS) assert.equal(controls(sock, h).length, 2, `${h} enregistré 2x`);
+});
+
+// H7. valeur la plus récente conservée pendant la déconnexion
+test('publishClient : dernière valeur conservée puis livrée après reconnexion', async () => {
+  const { pub, sock } = await makeChPublisher({});
+  pub.publish('stream_onair', [1]);    // déconnecté -> file
+  pub.publish('stream_onair', [0.7]);  // écrase la précédente
+  assert.equal(sock.emitted.length, 0);
+  sock.setConnected(true); sock.fire('connect'); // register + flush pending
+  const onair = controls(sock, 'stream_onair');
+  // register ([0]) puis deliver de la dernière valeur ([0.7], pas [1])
+  const delivered = onair.map((e) => JSON.stringify(e.values));
+  assert.ok(delivered.includes('[0.7]'), 'dernière valeur [0.7] livrée');
+  assert.ok(!delivered.includes('[1]'), 'ancienne valeur [1] écrasée, non livrée');
+});
+
+// H8. stop -> onair=0 livré (streamPresencePublisher)
+test('streamPresencePublisher : stop livre onair=0', () => {
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: () => 5000, emitter: em });
+  p.update({ onAir: true }, { rms: 0.4, peak: 0.7 });
+  p.stop();
+  const onair = em.calls.filter((c) => c.header === 'stream_onair');
+  assert.ok(onair.some((c) => Array.isArray(c.values) && c.values[0] === 0), 'onair=0 livré au stop');
+});
+
+// H9. page publique observe les 4 headers de flux (guard idempotent)
+test('observation publique : les 4 headers de flux sont observés une fois', () => {
+  const emitted = [];
+  const g = createObserveGuard({ emit: (h) => emitted.push(h) });
+  g.setConnected(true);
+  for (const h of STREAM_HEADERS) g.observeHeaderOnce(h);
+  assert.equal(emitted.length, 4);
+  assert.deepEqual([...new Set(emitted)].sort(), [...STREAM_HEADERS].sort());
+  // réobserver -> idempotent (pas de double émission)
+  for (const h of STREAM_HEADERS) g.observeHeaderOnce(h);
+  assert.equal(emitted.length, 4);
+});
+
+// H10. payload reçu met à jour streamStatus (routeStreamControl)
+test('routeStreamControl : payload reçu met à jour streamStatus', () => {
+  const c = makeClock(2000);
+  const s = createStreamStatus({ now: c.now });
+  assert.equal(routeStreamControl({ header: 'sound_title', values: ['x'] }, s), false, 'header non-flux ignoré');
+  assert.equal(routeStreamControl({ header: 'stream_onair', values: [1] }, s), true);
+  c.advance(10);
+  assert.equal(routeStreamControl({ header: 'stream_level', values: [0.5] }, s), true);
+  const snap = s.getSnapshot();
+  assert.equal(snap.onAir, 1);
+  assert.equal(snap.level, 0.5);
+  assert.equal(snap.computedStatus, STREAM_STATUS.LIVE);
+  const diag = s.getDiagnostics();
+  assert.equal(diag.receivedCount.stream_onair, 1);
+  assert.equal(diag.receivedCount.stream_level, 1);
+  assert.equal(diag.lastStreamHeader, 'stream_level');
+});
+
+// H11. pas de régression des 5 headers sound_* (routeControl réservé aux contenus)
+test('routage : routeControl accepte sound_*, routeStreamControl accepte stream_*', () => {
+  let sound = null;
+  assert.equal(routeControl({ header: 'sound_title', values: ['Morceau'] }, (h, v) => { sound = v; }), true);
+  assert.equal(sound, 'Morceau');
+  assert.equal(routeControl({ header: 'stream_onair', values: [1] }, () => {}), false, 'stream_* non routé par routeControl');
+  const s = createStreamStatus({ now: () => 1000 });
+  assert.equal(routeStreamControl({ header: 'sound_title', values: ['x'] }, s), false, 'sound_* non routé par routeStreamControl');
+});
+
+// H12. aucun secret dans les diagnostics (publisher + streamStatus)
+test('diagnostics : aucun secret/token/password dans publisher + streamStatus', async () => {
+  const secretPat = /token|secret|password|api[-_]?key|apiKey/i;
+  const c = makeClock(1000);
+  const st = createStreamStatus({ now: c.now });
+  st.ingest('stream_onair', [1]);
+  st.ingest('stream_level', [0.4]);
+  const snapJson = JSON.stringify({ ...st.getSnapshot(), ...st.getDiagnostics() });
+  assert.ok(!secretPat.test(snapJson), 'streamStatus: aucun secret dans snapshot+diag');
+  // publisher diag : publisher non connecté (diag par défaut).
+  const { pub } = await makeChPublisher({});
+  const dJson = JSON.stringify(pub.getDiagnostics());
+  assert.ok(!secretPat.test(dJson), 'publishClient: aucun secret dans diagnostics');
+});

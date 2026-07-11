@@ -61,6 +61,12 @@ export function initDiagnostic(api, root, persistence = {}) {
   const stFresh = el(root, 'diag-stream-fresh');
   const stSignal = el(root, 'diag-stream-signal');
   const stStatus = el(root, 'diag-stream-status');
+  // Hotfix Lot 4G : diagnostic renforcé (observation + compteurs + valeurs brutes).
+  const stObserved = el(root, 'diag-stream-observed');
+  const stLastHeader = el(root, 'diag-stream-last-header');
+  const stCounts = el(root, 'diag-stream-counts');
+  const stLastReceivedAt = el(root, 'diag-stream-last-received-at');
+  const stRaw = el(root, 'diag-stream-raw');
   const streamDiag = typeof persistence.streamDiag === 'function' ? persistence.streamDiag : null;
 
   let onAnyEnabled = onanyToggle.checked;
@@ -181,6 +187,23 @@ export function initDiagnostic(api, root, persistence = {}) {
     if (stFresh) stFresh.textContent = s.fresh ? 'oui' : 'non';
     if (stSignal) stSignal.textContent = s.signalPresent ? 'oui' : 'non';
     if (stStatus) stStatus.textContent = s.computedStatus || '—';
+    // Hotfix Lot 4G : observation publique + compteurs par header + valeurs brutes.
+    // Aucun secret (booléen onair, niveaux 0..1, timestamp public).
+    if (stObserved) stObserved.textContent = Array.isArray(s.observedStreamHeaders) && s.observedStreamHeaders.length
+      ? s.observedStreamHeaders.join(', ') : '—';
+    if (stLastHeader) stLastHeader.textContent = s.lastStreamHeader || '—';
+    if (stCounts) {
+      const c = s.receivedCount || {};
+      const parts = ['stream_onair', 'stream_level', 'stream_peak', 'stream_updated_at']
+        .map((h) => `${h.replace('stream_', '')}:${c[h] != null ? c[h] : 0}`);
+      stCounts.textContent = parts.join('  ');
+    }
+    if (stLastReceivedAt) stLastReceivedAt.textContent = fmtTs(s.lastReceivedAt);
+    if (stRaw) {
+      const r = s.rawLastValues || {};
+      const entries = Object.keys(r).map((h) => `${h.replace('stream_', '')}=${JSON.stringify(r[h])}`);
+      stRaw.textContent = entries.length ? entries.join('  ') : '—';
+    }
   }
 
   // --- Événements Collab-Hub connus (listeners uniques ; CH-ClientScript.js:546-709) ---

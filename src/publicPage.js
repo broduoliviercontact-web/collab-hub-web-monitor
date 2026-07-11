@@ -25,6 +25,9 @@ export function mountPublicPage() {
   // valeur inconnue -> false + warning (isLiveKitEnabled). L'import du SDK LiveKit
   // est dynamique et gate par ce flag -> aucun chargement si désactivé.
   const LIVEKIT_ENABLED = isLiveKitEnabled(import.meta.env.VITE_LIVEKIT_ENABLED);
+  // Logs de debug utiles (hotfix Lot 4G) : uniquement sous ?debug=1, jamais en console normale.
+  const debug = new URLSearchParams(location.search).get('debug') === '1';
+  const dbg = (...a) => { if (debug) console.log('[CH public flux]', ...a); };
 
   // --- Refs DOM ---
   const els = {
@@ -116,7 +119,7 @@ export function mountPublicPage() {
   function observeStreamHeaders() {
     if (!collabApi || !streamStatus) return;
     for (const h of STREAM_HEADERS) {
-      try { collabApi.observeHeaderOnce(h); } catch { /* guard idempotent */ }
+      try { const ok = collabApi.observeHeaderOnce(h); if (ok) dbg('observe stream header', h); } catch { /* guard idempotent */ }
     }
   }
 
@@ -125,6 +128,7 @@ export function mountPublicPage() {
     // que les 5 contenus). Aucun secret transporté.
     if (streamStatus && data && STREAM_HEADERS.includes(data.header)) {
       routeStreamControl(data, streamStatus);
+      dbg('received stream control', data.header, data.values);
       renderStreamState();
       recomputePublicState();
       if (diagApi) { diagApi.logControl(data); diagApi.refreshStream(); }
@@ -156,7 +160,7 @@ export function mountPublicPage() {
     connStatus = status;
     freshness.setServerStatus(status);
     recomputePublicState();
-    if (status === 'connected') observeStreamHeaders(); // (re)connexion -> réobserve
+    if (status === 'connected') { dbg('socket connected -> observe stream headers'); observeStreamHeaders(); } // (re)connexion -> réobserve
     if (diagApi) diagApi.setStatus(status);
   }
 
@@ -172,7 +176,11 @@ export function mountPublicPage() {
             initialSaved: lastSavedAt,
             clear: () => { const ok = clearSoundState(localStorage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
             livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listenerApi ? listenerApi.getSnapshot() : null }),
-            streamDiag: () => streamStatus ? streamStatus.getSnapshot() : null,
+            streamDiag: () => streamStatus ? {
+              ...streamStatus.getSnapshot(),
+              ...streamStatus.getDiagnostics(),
+              observedStreamHeaders: collabApi ? STREAM_HEADERS.filter((h) => collabApi.isObserved(h)) : [],
+            } : null,
           });
           diagApi.refreshFreshness(freshness);
           if (diagApi.refreshStream) diagApi.refreshStream();

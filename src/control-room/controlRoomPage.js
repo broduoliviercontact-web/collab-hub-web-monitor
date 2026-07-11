@@ -37,6 +37,8 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
   const { root, els } = buildControlRoomDOM(doc, mount);
   if (!root) return null;
 
+  const debug = new URLSearchParams(location.search).get('debug') === '1';
+
   const audioEngine = createAudioEngine();
   const publisher = createLiveKitPublisher({
     tokenClient: { requestLiveKitToken },
@@ -69,6 +71,7 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
     serverUrl: CH_SERVER_URL,
     namespace: CH_NAMESPACE,
     username: `CH-CR_${Math.floor(Math.random() * 1000)}`,
+    debug,
   })
     .then((c) => { streamConn = c; emitterRef.current = { publish: c.publish }; })
     .catch((e) => { console.warn('[Control Room] publication flux Collab-Hub désactivée :', e && e.message); });
@@ -114,7 +117,13 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
       if (typeof onSessionExpired === 'function') onSessionExpired();
     }
     if (debug && debugPre) {
-      debugPre.textContent = JSON.stringify({ ...snap, streamPresence: streamPublisher.getDiagnostics() }, null, 2);
+      debugPre.textContent = JSON.stringify({
+        ...snap,
+        streamPresence: streamPublisher.getDiagnostics(),
+        collabHubPublisher: streamConn && typeof streamConn.getDiagnostics === 'function'
+          ? streamConn.getDiagnostics()
+          : { connected: false, note: 'connexion non résolue' },
+      }, null, 2);
     }
   }
   controller.subscribe(onSnapshot);
@@ -137,7 +146,6 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
     },
   });
 
-  const debug = new URLSearchParams(location.search).get('debug') === '1';
   let debugPre = null;
   if (debug) {
     const dbg = doc.createElement('section');

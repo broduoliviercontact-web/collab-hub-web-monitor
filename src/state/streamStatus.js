@@ -95,10 +95,20 @@ export function createStreamStatus({ now = Date.now } = {}) {
   let peak = null;        // 0..1 | null
   let updatedAt = null;   // timestamp publié par la Control Room (epoch ms)
   let receivedAt = null;   // heure locale de dernière réception d'un header de flux
+  // Diagnostic renforcé (hotfix Lot 4G) : compteurs par header, dernier header,
+  // dernières valeurs brutes reçues. Aucun secret (valeurs publiques 0..1 / bool / ts).
+  const receivedCount = { stream_onair: 0, stream_level: 0, stream_peak: 0, stream_updated_at: 0 };
+  const rawLastValues = {};
+  let lastStreamHeader = null;
 
   function ingest(header, values) {
     const v = parseStreamValue(values);
     receivedAt = now();
+    if (STREAM_HEADERS.includes(header)) {
+      receivedCount[header] = (receivedCount[header] || 0) + 1;
+      rawLastValues[header] = v;
+      lastStreamHeader = header;
+    }
     if (header === 'stream_onair') {
       const o = parseOnAir(v);
       if (o !== null) onAir = o;
@@ -149,9 +159,28 @@ export function createStreamStatus({ now = Date.now } = {}) {
     };
   }
 
+  // Diagnostic renforcé (hotfix Lot 4G) : état d'observation/réception publique.
+  // Aucun secret : compteurs, dernier header, heure locale de dernière réception,
+  // dernières valeurs brutes. `observedStreamHeaders` est fourni par la page
+  // publique (via le guard) et fusionné dans le diagnostic rendu.
+  function getDiagnostics() {
+    return {
+      receivedCount: { ...receivedCount },
+      lastStreamHeader,
+      lastReceivedAt: receivedAt,
+      rawLastValues: { ...rawLastValues },
+    };
+  }
+
   return {
     ingest,
     getSnapshot: computeSnapshot,
-    reset() { onAir = null; level = null; peak = null; updatedAt = null; receivedAt = null; },
+    getDiagnostics,
+    reset() {
+      onAir = null; level = null; peak = null; updatedAt = null; receivedAt = null;
+      for (const k of Object.keys(receivedCount)) receivedCount[k] = 0;
+      for (const k of Object.keys(rawLastValues)) delete rawLastValues[k];
+      lastStreamHeader = null;
+    },
   };
 }
