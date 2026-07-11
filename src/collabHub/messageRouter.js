@@ -12,9 +12,10 @@ export const KNOWN_HEADERS = [
 // son activité. Jamais affiché comme contenu, jamais persisté.
 export const HEARTBEAT_HEADER = 'sound_heartbeat';
 
-// Headers de flux direct (Lot 4G) : publiés par la Control Room pour informer
-// la page publique de la présence du flux AVANT connexion LiveKit. Publics, sans
-// secret. Non routés par routeControl (réservé aux 5 contenus) -> gérés par
+// Headers de flux direct (Lot 4G + Lot 5 compteur auditeurs) : publiés par la
+// Control Room pour informer la page publique de la présence du flux AVANT
+// connexion LiveKit. Publics, sans secret (aucune identité/SID d'auditeur).
+// Non routés par routeControl (réservé aux 5 contenus) -> gérés par
 // routeStreamControl (state/streamStatus.js). Non inclus dans OBSERVABLE_HEADERS
 // (observation gérée à part, seulement si LiveKit activé).
 export const STREAM_HEADERS = [
@@ -22,6 +23,7 @@ export const STREAM_HEADERS = [
   'stream_level',
   'stream_peak',
   'stream_updated_at',
+  'stream_listener_count',
 ];
 
 // Tous les headers à observer au démarrage : 5 contenus + le heartbeat.

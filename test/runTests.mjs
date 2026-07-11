@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { normalizeValue, routeControl, KNOWN_HEADERS } from '../src/collabHub/messageRouter.js';
 import { createSoundState, DEFAULTS } from '../src/state/soundState.js';
-import { renderField, isSafeHttpUrl } from '../src/ui/renderSoundInfo.js';
+import { renderField, isSafeHttpUrl, parseSoundLink } from '../src/ui/renderSoundInfo.js';
 import { createObserveGuard, wireSocket } from '../src/collabHub/observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from '../src/collabHub/authMode.js';
 import {
@@ -1371,13 +1371,17 @@ function makeFakeLocalAudioTrackClass() {
     return { _media: mediaTrack, _opts: opts, _stopped: false, sid: 'track-sid-1', stop() { this._stopped = true; } };
   };
 }
-function makeFakeRoomClass({ connectFail = false, publishFail = false } = {}) {
+function makeFakeRoomClass({ connectFail = false, publishFail = false, participants = null } = {}) {
   class FakeRoom {
     constructor(opts) {
       this.opts = opts;
       this._connected = false;
       this._disconnected = false;
       this._listeners = {};
+      // Lot 5 : participants distants (Map<String, {identity}>). Défaut : Map vide.
+      this.remoteParticipants = participants instanceof Map
+        ? participants
+        : new Map(participants ? Object.entries(participants) : []);
       this.localParticipant = {
         sid: 'part-1',
         _unpublished: [],
@@ -1391,6 +1395,10 @@ function makeFakeRoomClass({ connectFail = false, publishFail = false } = {}) {
         },
       };
       FakeRoom.lastInstance = this;
+    }
+    // Helper test : remplace la Map des participants distants.
+    _setRemoteParticipants(obj) {
+      this.remoteParticipants = obj instanceof Map ? obj : new Map(Object.entries(obj || {}));
     }
     on(ev, cb) { (this._listeners[ev] = this._listeners[ev] || []).push(cb); }
     off(ev) { delete this._listeners[ev]; }
@@ -4126,6 +4134,7 @@ import {
   STREAM_HEADERS, STALE_MS, SIGNAL_THRESHOLD,
   STREAM_STATUS, STREAM_SIGNAL,
   clamp01, parseOnAir, parseTimestamp,
+  normalizeCount, formatListenerCount,
 } from '../src/state/streamStatus.js';
 import {
   createStreamPresencePublisher, DEFAULT_STREAM_THROTTLE_MS,
@@ -4134,6 +4143,7 @@ import {
   buildStreamStatusDOM, renderStreamStatus,
   mountStreamCard, shouldMountStreamCard,
 } from '../src/ui/streamStatusView.js';
+import { countLiveListeners, LISTENER_IDENTITY_PREFIX } from '../src/audio/listenerCount.js';
 
 // Faux emitter Collab-Hub : capture les publish(header, values).
 function makeFakeStreamEmitter() {
@@ -4232,7 +4242,7 @@ test('publisher : throttle respecté (pas d envoi à chaque frame)', () => {
   const em = makeFakeStreamEmitter();
   const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
   p.update({ onAir: true }, meterOf(0.5, 0.8));   // t=1000 : transition -> publish
-  assert.equal(em.calls.length, 4);              // 4 headers publiés
+  assert.equal(em.calls.length, STREAM_HEADERS.length); // un emit par header de flux
   assert.equal(p.getDiagnostics().publishCount, 1);
   c.advance(100); p.update({ onAir: true }, meterOf(0.6, 0.9)); // t=1100 : throttle bloqué
   assert.equal(p.getDiagnostics().publishCount, 1);
@@ -4383,7 +4393,7 @@ test('streamStatusView : INDISPONIBLE par défaut avant tout header', () => {
 test('streamStatus : seuils et constantes stables', () => {
   assert.equal(STALE_MS, 3000);
   assert.equal(SIGNAL_THRESHOLD, 0.01);
-  assert.deepEqual(STREAM_HEADERS, ['stream_onair', 'stream_level', 'stream_peak', 'stream_updated_at']);
+  assert.deepEqual(STREAM_HEADERS, ['stream_onair', 'stream_level', 'stream_peak', 'stream_updated_at', 'stream_listener_count']);
   assert.equal(DEFAULT_STREAM_THROTTLE_MS, 400);
   assert.equal(parseOnAir(1), 1);
   assert.equal(parseOnAir('0'), 0);
@@ -4450,7 +4460,7 @@ test('publishClient : enregistre chaque header une fois à la connexion', async 
   const { pub, sock } = await makeChPublisher({});
   sock.setConnected(true); sock.fire('connect');
   const ctl = sock.emitted.filter((e) => e.evt === 'control');
-  assert.equal(ctl.length, 4, '4 publish d enregistrement (un par header)');
+  assert.equal(ctl.length, STREAM_HEADERS.length, 'un publish d enregistrement par header de flux');
   for (const h of STREAM_HEADERS) {
     assert.equal(controls(sock, h).length, 1, `${h} enregistré une fois`);
   }
@@ -4505,7 +4515,7 @@ test('publishClient : reconnexion réenregistre les headers', async () => {
   assert.equal(pub.getDiagnostics().registeredHeaders.length, 0, 'registered vidé au disconnect');
   sock.setConnected(true); sock.fire('connect');   // 4 nouveaux registers
   const ctl = sock.emitted.filter((e) => e.evt === 'control');
-  assert.equal(ctl.length, 8, '4 + 4 registers (reconnexion)');
+  assert.equal(ctl.length, STREAM_HEADERS.length * 2, 'registers initiaux + registers après reconnexion');
   for (const h of STREAM_HEADERS) assert.equal(controls(sock, h).length, 2, `${h} enregistré 2x`);
 });
 
@@ -4533,17 +4543,17 @@ test('streamPresencePublisher : stop livre onair=0', () => {
   assert.ok(onair.some((c) => Array.isArray(c.values) && c.values[0] === 0), 'onair=0 livré au stop');
 });
 
-// H9. page publique observe les 4 headers de flux (guard idempotent)
-test('observation publique : les 4 headers de flux sont observés une fois', () => {
+// H9. page publique observe les headers de flux (guard idempotent)
+test('observation publique : les headers de flux sont observés une fois', () => {
   const emitted = [];
   const g = createObserveGuard({ emit: (h) => emitted.push(h) });
   g.setConnected(true);
   for (const h of STREAM_HEADERS) g.observeHeaderOnce(h);
-  assert.equal(emitted.length, 4);
+  assert.equal(emitted.length, STREAM_HEADERS.length);
   assert.deepEqual([...new Set(emitted)].sort(), [...STREAM_HEADERS].sort());
   // réobserver -> idempotent (pas de double émission)
   for (const h of STREAM_HEADERS) g.observeHeaderOnce(h);
-  assert.equal(emitted.length, 4);
+  assert.equal(emitted.length, STREAM_HEADERS.length);
 });
 
 // H10. payload reçu met à jour streamStatus (routeStreamControl)
@@ -4664,4 +4674,610 @@ test('listener : moteur inchangé (contrôles attendus présents)', () => {
   assert.equal(els.speaker.id, 'lk-speaker');
   assert.equal(els.attenBadge.id, 'lk-atten-badge');
   assert.equal(els.status.id, 'lk-status');
+});
+
+// ============================================================
+// Lot 5 (partie A) — sound_link enrichi [label]{url}
+// Parseur pur (parseSoundLink) + rendu DOM sécurisé (sans innerHTML).
+// ============================================================
+
+// Faux DOM pour le rendu sound_link : supporte createElement / createTextNode /
+// replaceChildren / setAttribute / textContent, et PIÈGE innerHTML (toute
+// écriture -> throw) pour garantir l'absence d'innerHTML.
+function richEl() {
+  const handlers = {};
+  const el = {
+    tagName: '', textContent: '', hidden: false, _attrs: {}, _children: [], _parent: null,
+    classList: { add() {}, remove() {}, contains() { return false; } },
+    setAttribute(k, v) { this._attrs[k] = v; },
+    getAttribute(k) { return this._attrs[k]; },
+    appendChild(c) { this._children.push(c); if (c && typeof c === 'object') c._parent = this; return c; },
+    append(...cs) { cs.forEach((c) => { this._children.push(c); if (c && typeof c === 'object') c._parent = this; }); },
+    replaceChildren(...cs) { this._children = cs; cs.forEach((c) => { if (c && typeof c === 'object') c._parent = this; }); },
+    addEventListener(ev, cb) { (handlers[ev] = handlers[ev] || []).push(cb); },
+    removeEventListener() {},
+    _fire: (ev, ...a) => (handlers[ev] || []).forEach((cb) => cb(...a)),
+  };
+  let _inner = '';
+  Object.defineProperty(el, 'innerHTML', {
+    configurable: true,
+    get() { return _inner; },
+    set() { throw new Error('innerHTML interdit (sécurité sound_link)'); },
+  });
+  return el;
+}
+function richDoc() {
+  const created = [];
+  return {
+    _created: created,
+    createElement(tag) {
+      const e = richEl();
+      e.tagName = tag.toUpperCase();
+      e._tag = tag;
+      created.push(e);
+      return e;
+    },
+    createTextNode(text) {
+      return { nodeType: 3, _text: String(text), textContent: String(text), _parent: null };
+    },
+  };
+}
+function richEls() {
+  return { linkWrap: richEl(), link: richEl() };
+}
+
+// 1. [label]{url} valide
+test('sound_link : [label]{url} valide -> rich-link', () => {
+  const p = parseSoundLink('[Tom Johnson]{https://example.com}');
+  assert.equal(p.type, 'rich-link');
+  assert.equal(p.href, 'https://example.com');
+  assert.equal(p.label, 'Tom Johnson');
+  assert.equal(p.prefix, '');
+  assert.equal(p.suffix, '');
+});
+
+// 2. URL contenant des parenthèses (preservées, délimiteurs = accolades)
+test('sound_link : URL avec parenthèses préservée', () => {
+  const p = parseSoundLink('[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)}');
+  assert.equal(p.type, 'rich-link');
+  assert.equal(p.href, 'https://en.wikipedia.org/wiki/Tom_Johnson_(composer)');
+});
+
+// 3. texte avant et après
+test('sound_link : texte avant et après le lien', () => {
+  const p = parseSoundLink('[Tom Johnson]{https://example.com} aime les nombres.');
+  assert.equal(p.type, 'rich-link');
+  assert.equal(p.prefix, '');
+  assert.equal(p.suffix, ' aime les nombres.');
+  const p2 = parseSoundLink('Découvrir [Tom Johnson]{https://example.com}.');
+  assert.equal(p2.prefix, 'Découvrir ');
+  assert.equal(p2.suffix, '.');
+});
+
+// 4. accolade fermante manquante -> invalid
+test('sound_link : accolade fermante manquante -> invalid', () => {
+  const p = parseSoundLink('[Tom Johnson]{https://example.com');
+  assert.equal(p.type, 'invalid');
+  assert.equal(p.attemptedRich, true);
+});
+
+// 4b. crochet fermant manquant -> invalid
+test('sound_link : crochet fermant manquant -> invalid', () => {
+  assert.equal(parseSoundLink('[Tom Johnson{https://example.com}').type, 'invalid');
+});
+
+// 5. label vide -> invalid
+test('sound_link : label vide -> invalid', () => {
+  assert.equal(parseSoundLink('[]{https://example.com}').type, 'invalid');
+  assert.equal(parseSoundLink('[   ]{https://example.com}').type, 'invalid');
+});
+
+// 6. URL vide -> invalid
+test('sound_link : URL vide -> invalid', () => {
+  assert.equal(parseSoundLink('[Tom]{}').type, 'invalid');
+});
+
+// 7. protocole javascript refusé
+test('sound_link : protocole javascript refusé -> invalid (aucun href)', () => {
+  const p = parseSoundLink('[Tom]{javascript:alert(1)}');
+  assert.equal(p.type, 'invalid');
+  assert.equal(p.href, null);
+});
+
+// 7b. data: et file: refusés
+test('sound_link : data: et file: refusés -> invalid', () => {
+  assert.equal(parseSoundLink('[Tom]{data:text/html,xxx}').type, 'invalid');
+  assert.equal(parseSoundLink('[Tom]{file:///etc/passwd}').type, 'invalid');
+});
+
+// 8. HTML non interprété (label gardé littéral)
+test('sound_link : HTML reçu dans le label non interprété', () => {
+  const p = parseSoundLink('[<b>bold</b>]{https://example.com}');
+  assert.equal(p.type, 'rich-link');
+  assert.equal(p.label, '<b>bold</b>'); // gardé littéral, pas interprété
+});
+
+// 9. URL simple historique toujours valide
+test('sound_link : URL simple historique -> plain-url', () => {
+  const p = parseSoundLink('https://example.com');
+  assert.equal(p.type, 'plain-url');
+  assert.equal(p.href, 'https://example.com');
+});
+
+// 10. rendu rich-link : prefix TextNode + <a> + suffix TextNode, visible
+test('sound_link : rendu rich-link construit via APIs DOM (TextNode + <a>)', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', 'Découvrir [Tom Johnson]{https://example.com}.', els, doc);
+  assert.equal(els.linkWrap.hidden, false);
+  const children = els.linkWrap._children;
+  // prefix TextNode + <a> + suffix TextNode
+  assert.equal(children.length, 3);
+  assert.equal(children[0].nodeType, 3);
+  assert.equal(children[0]._text, 'Découvrir ');
+  assert.equal(children[1].tagName, 'A');
+  assert.equal(children[1].textContent, 'Tom Johnson');
+  assert.equal(children[2]._text, '.');
+});
+
+// 11. rendu rich-link : target="_blank" posé
+test('sound_link : rendu rich-link pose target="_blank"', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', '[Tom]{https://example.com}', els, doc);
+  const a = els.linkWrap._children.find((c) => c.tagName === 'A');
+  assert.equal(a.getAttribute('target'), '_blank');
+});
+
+// 12. rendu rich-link : rel="noopener noreferrer" posé
+test('sound_link : rendu rich-link pose rel="noopener noreferrer"', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', '[Tom]{https://example.com}', els, doc);
+  const a = els.linkWrap._children.find((c) => c.tagName === 'A');
+  assert.equal(a.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(a.getAttribute('href'), 'https://example.com');
+});
+
+// 13. aucun innerHTML utilisé (piège -> throw si tenté)
+test('sound_link : aucun innerHTML utilisé au rendu rich-link', () => {
+  const doc = richDoc();
+  const els = richEls();
+  // Si le rendu utilisait innerHTML, le piège lèverait -> le test échouerait.
+  renderField('sound_link', '[Tom]{https://example.com}', els, doc);
+  assert.equal(els.linkWrap.innerHTML, '');
+});
+
+// 14. rendu plain-url : lien historique visible + href + « En savoir plus »
+test('sound_link : rendu plain-url -> lien visible + href + En savoir plus', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', 'https://example.com', els, doc);
+  assert.equal(els.linkWrap.hidden, false);
+  assert.equal(els.link.getAttribute('href'), 'https://example.com');
+  assert.equal(els.link.getAttribute('target'), '_blank');
+  assert.equal(els.link.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(els.link.textContent, 'En savoir plus');
+});
+
+// 15. rendu invalid attemptedRich -> texte brut non cliquable, visible
+test('sound_link : syntaxe enrichie invalide -> texte brut non cliquable', () => {
+  const doc = richDoc();
+  const els = richEls();
+  const raw = '[Tom]{javascript:alert(1)}';
+  renderField('sound_link', raw, els, doc);
+  assert.equal(els.linkWrap.hidden, false);
+  // Un seul enfant TextNode contenant la valeur brute ; aucun <a> créé.
+  const children = els.linkWrap._children;
+  assert.equal(children.length, 1);
+  assert.equal(children[0].nodeType, 3);
+  assert.equal(children[0]._text, raw);
+  const a = children.find((c) => c && c.tagName === 'A');
+  assert.equal(a, undefined);
+});
+
+// 15b. rendu invalid bare (javascript: sans '[') -> masqué (compat historique)
+test('sound_link : URL simple invalide (javascript:) -> masqué, href neutre', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', 'javascript:alert(1)', els, doc);
+  assert.equal(els.linkWrap.hidden, true);
+  assert.equal(els.link.getAttribute('href'), '#');
+});
+
+// 15c. rendu vide -> masqué
+test('sound_link : valeur vide -> lien masqué', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', '', els, doc);
+  assert.equal(els.linkWrap.hidden, true);
+});
+
+// 15d. compat historique : URL simple via renderField -> lien visible
+test('sound_link : compat historique URL simple via renderField', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', 'https://example.com/path?q=1', els, doc);
+  assert.equal(els.linkWrap.hidden, false);
+  assert.equal(els.link.getAttribute('href'), 'https://example.com/path?q=1');
+});
+
+// ============================================================
+// Lot 5 (partie B) — compteur public d'auditeurs
+// countLiveListeners (pur) + streamStatus + streamPresencePublisher +
+// livekitPublisher (participant events) + UI listener count span.
+// ============================================================
+
+// 1. aucun participant -> 0
+test('countLiveListeners : null/undefined -> 0', () => {
+  assert.equal(countLiveListeners(null), 0);
+  assert.equal(countLiveListeners(undefined), 0);
+});
+
+// 2. un listener-* -> 1
+test('countLiveListeners : un listener-* -> 1', () => {
+  assert.equal(countLiveListeners([{ identity: 'listener-1' }]), 1);
+  assert.equal(countLiveListeners({ identity: 'listener-1' }), 1); // objet plat seul
+});
+
+// 3. plusieurs -> compte correct
+test('countLiveListeners : plusieurs auditeurs -> compte exact', () => {
+  const arr = [
+    { identity: 'listener-1' }, { identity: 'listener-2' }, { identity: 'listener-3' },
+  ];
+  assert.equal(countLiveListeners(arr), 3);
+});
+
+// 4. performer-* non compté
+test('countLiveListeners : performer-* non compté', () => {
+  assert.equal(countLiveListeners([{ identity: 'performer-x' }]), 0);
+  assert.equal(countLiveListeners([{ identity: 'listener-1' }, { identity: 'performer-2' }]), 1);
+});
+
+// 5. participant inconnu (sans identity / autre préfixe) non compté
+test('countLiveListeners : participant sans identity ou autre préfixe non compté', () => {
+  assert.equal(countLiveListeners([{ name: 'nope' }, {}]), 0);
+  assert.equal(countLiveListeners([{ identity: 'guest-1' }, { identity: 'listener-1' }]), 1);
+});
+
+// 6. Map LiveKit supportée
+test('countLiveListeners : Map<String, Participant> supportée', () => {
+  const m = new Map([
+    ['s1', { identity: 'listener-1' }],
+    ['s2', { identity: 'listener-2' }],
+    ['s3', { identity: 'performer-1' }],
+  ]);
+  assert.equal(countLiveListeners(m), 2);
+});
+
+// 7. objet plat clé->participant supporté
+test('countLiveListeners : objet plat clé->participant supporté', () => {
+  const obj = {
+    s1: { identity: 'listener-1' },
+    s2: { identity: 'listener-2' },
+    s3: { identity: 'performer-1' },
+  };
+  assert.equal(countLiveListeners(obj), 2);
+});
+
+// 8. Set / iterable supporté
+test('countLiveListeners : Set itérable supporté', () => {
+  const s = new Set([{ identity: 'listener-1' }, { identity: 'listener-2' }]);
+  assert.equal(countLiveListeners(s), 2);
+});
+
+// 8b. LISTENER_IDENTITY_PREFIX exposé et correct
+test('countLiveListeners : LISTENER_IDENTITY_PREFIX = "listener-"', () => {
+  assert.equal(LISTENER_IDENTITY_PREFIX, 'listener-');
+});
+
+// 9. normalizeCount : décimal tronqué, négatif/invalide -> null
+test('normalizeCount : décimal -> floor, négatif/invalide -> null', () => {
+  assert.equal(normalizeCount(3.9), 3);
+  assert.equal(normalizeCount('2'), 2);
+  assert.equal(normalizeCount(-1), null);
+  assert.equal(normalizeCount(null), null);
+  assert.equal(normalizeCount('abc'), null);
+  assert.equal(normalizeCount(undefined), null);
+});
+
+// 10. formatListenerCount : singulier/pluriel
+test('formatListenerCount : 0/1 singulier, >=2 pluriel', () => {
+  assert.equal(formatListenerCount(0), '0 auditeur');
+  assert.equal(formatListenerCount(1), '1 auditeur');
+  assert.equal(formatListenerCount(2), '2 auditeurs');
+  assert.equal(formatListenerCount(12), '12 auditeurs');
+});
+
+// 11. streamStatus : ingestion stream_listener_count valide -> label
+test('streamStatus : ingestion compteur valide -> listenerCountLabel', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [3] }, s);
+  const snap = s.getSnapshot();
+  assert.equal(snap.listenerCount, 3);
+  assert.equal(snap.listenerCountKnown, true);
+  assert.equal(snap.listenerCountLabel, '3 auditeurs');
+});
+
+// 12. streamStatus : 0 auditeur (off-air fresh)
+test('streamStatus : compteur 0 -> "0 auditeur"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [0] }, s);
+  assert.equal(s.getSnapshot().listenerCountLabel, '0 auditeur');
+});
+
+// 13. streamStatus : 1 auditeur
+test('streamStatus : compteur 1 -> "1 auditeur"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [1] }, s);
+  assert.equal(s.getSnapshot().listenerCountLabel, '1 auditeur');
+});
+
+// 14. streamStatus : décimal normalisé en entier
+test('streamStatus : compteur décimal normalisé (3.9 -> 3)', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [3.9] }, s);
+  assert.equal(s.getSnapshot().listenerCount, 3);
+});
+
+// 15. streamStatus : valeur invalide -> "Auditeurs : —"
+test('streamStatus : compteur invalide -> "Auditeurs : —"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: ['abc'] }, s);
+  const snap = s.getSnapshot();
+  assert.equal(snap.listenerCount, null);
+  assert.equal(snap.listenerCountKnown, false);
+  assert.equal(snap.listenerCountLabel, 'Auditeurs : —');
+});
+
+// 16. streamStatus : valeur négative -> "Auditeurs : —"
+test('streamStatus : compteur négatif -> "Auditeurs : —"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [-5] }, s);
+  assert.equal(s.getSnapshot().listenerCountLabel, 'Auditeurs : —');
+});
+
+// 17. streamStatus : stale -> "Auditeurs : —" (snapshot listenerCount null)
+test('streamStatus : compteur stale -> "Auditeurs : —" et listenerCount null', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [2] }, s);
+  c.advance(STALE_MS + 1); // > 3 s sans nouveau header
+  const snap = s.getSnapshot();
+  assert.equal(snap.listenerCountKnown, false);
+  assert.equal(snap.listenerCount, null);
+  assert.equal(snap.listenerCountLabel, 'Auditeurs : —');
+});
+
+// 18. streamStatus : jamais reçu -> "Auditeurs : —"
+test('streamStatus : compteur jamais reçu -> "Auditeurs : —"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  const snap = s.getSnapshot();
+  assert.equal(snap.listenerCountKnown, false);
+  assert.equal(snap.listenerCountLabel, 'Auditeurs : —');
+});
+
+// 19. streamStatus : diagnostics compteur (aucune identité)
+test('streamStatus : diagnostics compteur (raw/count/known/label/receivedAt)', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [2] }, s);
+  const d = s.getDiagnostics();
+  assert.equal(d.rawListenerCount, 2);
+  assert.equal(d.listenerCount, 2);
+  assert.equal(d.listenerCountKnown, true);
+  assert.equal(d.listenerCountLabel, '2 auditeurs');
+  assert.equal(d.listenerCountReceivedAt, 1000);
+  assert.equal(d.receivedCount.stream_listener_count, 1);
+});
+
+// 20. streamStatus : reset efface le compteur
+test('streamStatus : reset efface le compteur d auditeurs', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [2] }, s);
+  s.reset();
+  const d = s.getDiagnostics();
+  assert.equal(d.listenerCount, null);
+  assert.equal(d.rawListenerCount, null);
+  assert.equal(d.receivedCount.stream_listener_count, 0);
+});
+
+// 21. publisher : liveListenerCount dans le snapshot après connexion
+test('publisher : liveListenerCount présent dans le snapshot (entier >= 0)', async () => {
+  const RoomClass = makeFakeRoomClass({ participants: { s1: { identity: 'listener-1' }, s2: { identity: 'listener-2' } } });
+  const p = makePublisher({ RoomClass });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  const snap = p.getSnapshot();
+  assert.equal(snap.liveListenerCount, 2);
+});
+
+// 22. publisher : ParticipantConnected met à jour le compteur
+test('publisher : participantConnected -> liveListenerCount recalculé', async () => {
+  const RoomClass = makeFakeRoomClass({ participants: { s1: { identity: 'listener-1' } } });
+  const p = makePublisher({ RoomClass });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(p.getSnapshot().liveListenerCount, 1);
+  const room = RoomClass.lastInstance;
+  room._setRemoteParticipants({ s1: { identity: 'listener-1' }, s2: { identity: 'listener-2' } });
+  room._emit('participantConnected', { identity: 'listener-2' });
+  assert.equal(p.getSnapshot().liveListenerCount, 2);
+});
+
+// 23. publisher : ParticipantDisconnected met à jour le compteur
+test('publisher : participantDisconnected -> liveListenerCount recalculé', async () => {
+  const RoomClass = makeFakeRoomClass({ participants: { s1: { identity: 'listener-1' }, s2: { identity: 'listener-2' } } });
+  const p = makePublisher({ RoomClass });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  assert.equal(p.getSnapshot().liveListenerCount, 2);
+  const room = RoomClass.lastInstance;
+  room._setRemoteParticipants({ s1: { identity: 'listener-1' } });
+  room._emit('participantDisconnected', { identity: 'listener-2' });
+  assert.equal(p.getSnapshot().liveListenerCount, 1);
+});
+
+// 24. publisher : reconnected recalcul le compteur
+test('publisher : reconnected -> liveListenerCount recalculé', async () => {
+  const RoomClass = makeFakeRoomClass({ participants: { s1: { identity: 'listener-1' } } });
+  const p = makePublisher({ RoomClass });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  const room = RoomClass.lastInstance;
+  room._setRemoteParticipants({ s1: { identity: 'listener-1' }, s2: { identity: 'listener-2' }, s3: { identity: 'listener-3' } });
+  room._emit('reconnected');
+  assert.equal(p.getSnapshot().liveListenerCount, 3);
+});
+
+// 25. publisher : notify appelé sur changement de compteur (subscribe)
+test('publisher : changement de compteur notifie les abonnés', async () => {
+  const RoomClass = makeFakeRoomClass({ participants: { s1: { identity: 'listener-1' } } });
+  const p = makePublisher({ RoomClass });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  let snaps = 0;
+  p.subscribe(() => { snaps++; });
+  const room = RoomClass.lastInstance;
+  room._setRemoteParticipants({ s1: { identity: 'listener-1' }, s2: { identity: 'listener-2' } });
+  room._emit('participantConnected', { identity: 'listener-2' });
+  assert.ok(snaps >= 1, 'au moins une notification sur ajout d auditeur');
+});
+
+// 26. publisher : aucun secret/identité d'auditeur dans le snapshot
+test('publisher : snapshot ne contient aucune identité/SID d auditeur', async () => {
+  const RoomClass = makeFakeRoomClass({ participants: { s1: { identity: 'listener-secret-1' }, s2: { identity: 'listener-secret-2' } } });
+  const p = makePublisher({ RoomClass });
+  await p.connect({ password: 'pw', outputStream: makeFakeOutputStream(makeFakeMediaTrack()) });
+  const json = JSON.stringify(p.getSnapshot());
+  assert.equal(p.getSnapshot().liveListenerCount, 2);
+  assert.ok(!/listener-secret|listener-1|listener-2/.test(json), 'aucune identité d auditeur dans le snapshot');
+});
+
+// 27. streamPresencePublisher : publie stream_listener_count [N]
+test('streamPresencePublisher : update publie stream_listener_count [N]', () => {
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: () => 1000, throttleMs: 400, emitter: em });
+  p.update({ onAir: true, liveListenerCount: 3 }, meterOf(0.4, 0.7));
+  const cnt = em.calls.filter((c) => c.header === 'stream_listener_count');
+  assert.deepEqual(cnt[cnt.length - 1].values, [3]);
+});
+
+// 28. streamPresencePublisher : changement de compteur -> publication immédiate (hors throttle)
+test('streamPresencePublisher : changement de compteur force une publication immédiate', () => {
+  const c = makeClock(1000);
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: true, liveListenerCount: 1 }, meterOf(0.4, 0.7)); // t=1000 transition -> publish
+  assert.equal(p.getDiagnostics().publishCount, 1);
+  c.advance(50); // t=1050 : throttle bloqué, MAIS le compteur change -> publish immédiat
+  p.update({ onAir: true, liveListenerCount: 2 }, meterOf(0.4, 0.7));
+  assert.equal(p.getDiagnostics().publishCount, 2);
+  const cnt = em.calls.filter((x) => x.header === 'stream_listener_count').map((x) => x.values[0]);
+  assert.deepEqual(cnt, [1, 2]);
+});
+
+// 29. streamPresencePublisher : compteur stable -> pas de publication supplémentaire
+test('streamPresencePublisher : compteur stable -> pas de publish hors throttle', () => {
+  const c = makeClock(1000);
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: true, liveListenerCount: 2 }, meterOf(0.4, 0.7)); // t=1000 publish
+  assert.equal(p.getDiagnostics().publishCount, 1);
+  c.advance(50); // t=1050 : même compteur, throttle bloqué -> pas de publish
+  p.update({ onAir: true, liveListenerCount: 2 }, meterOf(0.5, 0.8));
+  assert.equal(p.getDiagnostics().publishCount, 1);
+});
+
+// 30. streamPresencePublisher : stop publie listener_count=0
+test('streamPresencePublisher : stop publie stream_listener_count [0]', () => {
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: () => 5000, emitter: em });
+  p.update({ onAir: true, liveListenerCount: 5 }, meterOf(0.4, 0.7));
+  p.stop();
+  const cnt = em.calls.filter((c) => c.header === 'stream_listener_count');
+  assert.deepEqual(cnt[cnt.length - 1].values, [0]);
+});
+
+// 31. streamPresencePublisher : diagnostics compteur
+test('streamPresencePublisher : diagnostics lastPublishedListenerCount / publishCount', () => {
+  const c = makeClock(1000);
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: c.now, throttleMs: 400, emitter: em });
+  p.update({ onAir: true, liveListenerCount: 2 }, meterOf(0.4, 0.7));
+  let d = p.getDiagnostics();
+  assert.equal(d.lastPublishedListenerCount, 2);
+  assert.equal(d.listenerCountPublishCount, 1);
+  assert.equal(d.lastListenerCountPublishedAt, 1000);
+  c.advance(50);
+  p.update({ onAir: true, liveListenerCount: 2 }, meterOf(0.4, 0.7)); // stable -> pas de publish
+  d = p.getDiagnostics();
+  assert.equal(d.listenerCountPublishCount, 1, 'pas de nouveau publish de compteur si stable');
+});
+
+// 32. streamPresencePublisher : hors antenne -> listener_count forcé à 0
+test('streamPresencePublisher : hors antenne -> listener_count forcé à 0', () => {
+  const em = makeFakeStreamEmitter();
+  const p = createStreamPresencePublisher({ now: () => 1000, emitter: em });
+  p.update({ onAir: false, liveListenerCount: 5 }, meterOf(0, 0));
+  const cnt = em.calls.filter((c) => c.header === 'stream_listener_count');
+  assert.deepEqual(cnt[cnt.length - 1].values, [0]);
+});
+
+// 33. UI listener : span de compteur présent (id + aria-live + classe)
+test('listener : span de compteur d auditeurs présent (lk-listener-count)', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  assert.ok(els.count, 'els.count exposé');
+  assert.equal(els.count.id, 'lk-listener-count');
+  assert.equal(els.count.getAttribute('aria-live'), 'polite');
+  // classe listener-count posée
+  assert.equal(els.count.className, 'listener-count');
+  // libellé initial discret
+  assert.equal(els.count.textContent, 'Auditeurs : —');
+});
+
+// 34. UI listener : compteur visible quel que soit debug (section listener)
+test('listener : span compteur construit hors debug (visible sur /)', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  // Le span est toujours créé par buildListenerDOM (debug ou non) -> visible
+  // sur / et /?debug=1 (la stream-card reste, elle, debug-only).
+  assert.ok(els.count);
+  assert.equal(els.count.id, 'lk-listener-count');
+});
+
+// 35. UI listener : aucun secret/identité dans le span de compteur
+test('listener : span compteur ne contient aucune identité/SID', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  assert.ok(!/sid|identity|token|secret/i.test(els.count.textContent));
+  assert.ok(!/sid|identity|token|secret/i.test(els.count.id));
+});
+
+// 36. routeStreamControl : stream_listener_count routé (header de flux)
+test('routeStreamControl : stream_listener_count est un header de flux routé', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  assert.equal(routeStreamControl({ header: 'stream_listener_count', values: [4] }, s), true);
+  assert.equal(s.getSnapshot().listenerCount, 4);
+});
+
+// 37. non-régression : stream-card reste debug-only (shouldMountStreamCard)
+test('listener count : la stream-card reste debug-only (pas sur /)', () => {
+  assert.equal(shouldMountStreamCard(false, true), false, 'hors debug pas de stream-card');
+  assert.equal(shouldMountStreamCard(true, true), true, 'debug -> stream-card');
+});
+
+// 38. register/deliver : stream_listener_count pré-enregistré par publishClient
+test('publishClient : stream_listener_count enregistré à la connexion', async () => {
+  const { pub, sock } = await makeChPublisher({});
+  sock.setConnected(true); sock.fire('connect');
+  const cnt = controls(sock, 'stream_listener_count');
+  assert.equal(cnt.length, 1, 'stream_listener_count enregistré une fois');
+  assert.deepEqual(cnt[0].values, [0], 'register avec valeur neutre');
+  assert.ok(pub.isRegistered('stream_listener_count'));
 });

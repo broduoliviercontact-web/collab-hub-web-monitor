@@ -196,6 +196,15 @@ main.card[data-content-fresh="false"] .block {
   font-size: 0.95rem;
   color: var(--text);
 }
+/* Lot 5 (partie B) : compteur public d'auditeurs — discret, près du bouton. */
+.lk-count-line {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.lk-count-line .listener-count {
+  font-variant-numeric: tabular-nums;
+}
 .lk-controls {
   display: flex;
   flex-wrap: wrap;

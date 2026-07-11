@@ -14,6 +14,7 @@
 // sont injectés par l'appelant (Lot 4E). Aucune import de livekit-client ici.
 
 import { GAIN_DEFAULT } from './constants.js';
+import { countLiveListeners } from './listenerCount.js';
 
 const ACTIVE = new Set(['requesting_token', 'connecting', 'connected', 'publishing', 'live', 'reconnecting']);
 
@@ -21,6 +22,11 @@ const ACTIVE = new Set(['requesting_token', 'connecting', 'connected', 'publishi
 const EVT_RECONNECTING = 'reconnecting';
 const EVT_RECONNECTED = 'reconnected';
 const EVT_DISCONNECTED = 'disconnected';
+// Lot 5 (partie B) : événements de participants distants (auditeurs) pour le
+// compteur public. Aucune identité/SID d'auditeur n'est exposé — seulement le
+// compte (countLiveListeners ne renvoie qu'un nombre).
+const EVT_PARTICIPANT_CONNECTED = 'participantConnected';
+const EVT_PARTICIPANT_DISCONNECTED = 'participantDisconnected';
 
 export const PUBLISHER_ERRORS = {
   busy: 'publisher_busy',
@@ -67,6 +73,8 @@ export function createLiveKitPublisher({
   let reconnectCount = 0;
   let connectedAt = null;
   let liveSince = null;
+  // Lot 5 (partie B) : nombre d'auditeurs distants (identity "listener-*").
+  let liveListenerCount = 0;
 
   const listeners = new Set();
   let destroyed = false;
@@ -99,7 +107,23 @@ export function createLiveKitPublisher({
   function detachRoomListeners() {
     if (!room) return;
     try { if (typeof room.removeAllListeners === 'function') room.removeAllListeners(); } catch {}
-    try { if (typeof room.off === 'function') { room.off(EVT_RECONNECTING); room.off(EVT_RECONNECTED); room.off(EVT_DISCONNECTED); } } catch {}
+    try { if (typeof room.off === 'function') {
+      room.off(EVT_RECONNECTING); room.off(EVT_RECONNECTED); room.off(EVT_DISCONNECTED);
+      room.off(EVT_PARTICIPANT_CONNECTED); room.off(EVT_PARTICIPANT_DISCONNECTED);
+    } } catch {}
+  }
+
+  // Lot 5 (partie B) : recalcule le nombre d'auditeurs distants depuis la Map
+  // room.remoteParticipants. Ne renvoie/expose aucune identité. Notifie les
+  // abonnés (controller -> snapshot -> publication) seulement si le compte a
+  // changé -> évite toute publication superflue quand le compte est stable.
+  function recomputeListenerCount() {
+    if (!room) return;
+    const next = countLiveListeners(room.remoteParticipants);
+    if (next !== liveListenerCount) {
+      liveListenerCount = next;
+      notify();
+    }
   }
 
   // Nettoyage interne (unpublish + disconnect + listeners) sans toucher au
@@ -125,6 +149,7 @@ export function createLiveKitPublisher({
     room = null;
     isConnected = false;
     participantSid = null;
+    liveListenerCount = 0; // Room fermée -> plus d'auditeurs.
   }
 
   function wireRoomEvents() {
@@ -137,6 +162,9 @@ export function createLiveKitPublisher({
       // On ne republie PAS automatiquement : on vérifie l'état de la piste.
       const stillLive = mediaTrack && mediaTrack.readyState === 'live' && isPublished;
       setState(stillLive ? 'live' : 'connected');
+      // Lot 5 : après reconnexion, la Map remoteParticipants peut avoir changé
+      // -> on recalcule le compteur d'auditeurs (aucune identité exposée).
+      recomputeListenerCount();
     });
     room.on(EVT_DISCONNECTED, () => {
       if (userStopped) return; // arrêt volontaire : stop() gère la transition.
@@ -144,9 +172,14 @@ export function createLiveKitPublisher({
       isPublished = false;
       trackSid = null;
       publication = null;
+      liveListenerCount = 0; // plus de Room -> plus d'auditeurs.
       // Déconnexion involontaire -> erreur (la piste source reste intacte).
       setError(PUBLISHER_ERRORS.disconnected, 'Connexion LiveKit perdue.');
     });
+    // Lot 5 (partie B) : un auditeur rejoint / quitte -> recalcul immédiat du
+    // compteur (notify seulement si changement -> pas de publication superflue).
+    room.on(EVT_PARTICIPANT_CONNECTED, () => recomputeListenerCount());
+    room.on(EVT_PARTICIPANT_DISCONNECTED, () => recomputeListenerCount());
   }
 
   async function connect({ outputStream } = {}) {
@@ -184,6 +217,8 @@ export function createLiveKitPublisher({
       participantSid = (room.localParticipant && room.localParticipant.sid) || null;
       connectedAt = now();
       setState('connected');
+      // Lot 5 : auditeurs éventuellement déjà présents à la connexion -> comptage.
+      recomputeListenerCount();
     } catch (e) {
       await cleanup();
       setError(PUBLISHER_ERRORS.connect, 'Échec connexion Room.', e);
@@ -263,6 +298,9 @@ export function createLiveKitPublisher({
       lastError: lastError ? { code: lastError.code, message: lastError.message } : null,
       connectedAt,
       liveSince,
+      // Lot 5 (partie B) : nombre d'auditeurs distants (identity "listener-*").
+      // Entier >= 0 ; aucun identifiant/SID d'auditeur exposé.
+      liveListenerCount,
     };
   }
 

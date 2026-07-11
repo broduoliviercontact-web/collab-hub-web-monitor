@@ -5,7 +5,7 @@
 // socketClient) — reçoit statut + contrôles via setStatus()/logControl() appelés
 // par main.js. Attache uniquement onAny + les événements Collab-Hub connus
 // (listeners uniques). L'observation réutilise le guard idempotent de socketClient.
-import { KNOWN_HEADERS } from '../collabHub/messageRouter.js';
+import { KNOWN_HEADERS, STREAM_HEADERS } from '../collabHub/messageRouter.js';
 
 const el = (root, id) => root.querySelector(`#${id}`);
 
@@ -67,6 +67,12 @@ export function initDiagnostic(api, root, persistence = {}) {
   const stCounts = el(root, 'diag-stream-counts');
   const stLastReceivedAt = el(root, 'diag-stream-last-received-at');
   const stRaw = el(root, 'diag-stream-raw');
+  // Lot 5 (partie B) : diagnostic du compteur d'auditeurs (aucune identité/SID).
+  const stListenerRaw = el(root, 'diag-stream-listener-raw');
+  const stListenerCount = el(root, 'diag-stream-listener-count');
+  const stListenerKnown = el(root, 'diag-stream-listener-known');
+  const stListenerLabel = el(root, 'diag-stream-listener-label');
+  const stListenerReceivedAt = el(root, 'diag-stream-listener-received-at');
   const streamDiag = typeof persistence.streamDiag === 'function' ? persistence.streamDiag : null;
 
   let onAnyEnabled = onanyToggle.checked;
@@ -194,7 +200,7 @@ export function initDiagnostic(api, root, persistence = {}) {
     if (stLastHeader) stLastHeader.textContent = s.lastStreamHeader || '—';
     if (stCounts) {
       const c = s.receivedCount || {};
-      const parts = ['stream_onair', 'stream_level', 'stream_peak', 'stream_updated_at']
+      const parts = STREAM_HEADERS
         .map((h) => `${h.replace('stream_', '')}:${c[h] != null ? c[h] : 0}`);
       stCounts.textContent = parts.join('  ');
     }
@@ -204,6 +210,12 @@ export function initDiagnostic(api, root, persistence = {}) {
       const entries = Object.keys(r).map((h) => `${h.replace('stream_', '')}=${JSON.stringify(r[h])}`);
       stRaw.textContent = entries.length ? entries.join('  ') : '—';
     }
+    // Lot 5 (partie B) : compteur d'auditeurs. Aucune identité/SID affiché.
+    if (stListenerRaw) stListenerRaw.textContent = s.rawListenerCount != null ? JSON.stringify(s.rawListenerCount) : '—';
+    if (stListenerCount) stListenerCount.textContent = s.listenerCount != null ? String(s.listenerCount) : '—';
+    if (stListenerKnown) stListenerKnown.textContent = s.listenerCountKnown ? 'oui' : 'non';
+    if (stListenerLabel) stListenerLabel.textContent = s.listenerCountLabel || '—';
+    if (stListenerReceivedAt) stListenerReceivedAt.textContent = fmtTs(s.listenerCountReceivedAt);
   }
 
   // --- Événements Collab-Hub connus (listeners uniques ; CH-ClientScript.js:546-709) ---

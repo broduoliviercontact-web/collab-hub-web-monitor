@@ -46,7 +46,7 @@ export function mountPublicPage() {
   const restored = loadSoundState(localStorage);
   const initial = restored ? { ...DEFAULTS, ...restored.fields } : DEFAULTS;
   const state = createSoundState(initial);
-  for (const h of KNOWN_HEADERS) renderField(h, state.get(h), els);
+  for (const h of KNOWN_HEADERS) renderField(h, state.get(h), els, document);
 
   let lastSavedAt = restored ? restored.updatedAt : null;
   let lastLocalRestore = restored ? restored.updatedAt : null;
@@ -66,6 +66,11 @@ export function mountPublicPage() {
   let streamStatus = null;
   let streamEls = null;
   let streamAnchor = els.card;
+  // Lot 5 (partie B) : span de compteur d'auditeurs (dans la section listener,
+  // montée async). Mis à jour depuis streamStatus uniquement quand le libellé
+  // change (aria-live polite -> pas de réannonce à chaque tick).
+  let streamCountEl = null;
+  let lastListenerCountLabel = null;
   if (LIVEKIT_ENABLED) {
     streamStatus = createStreamStatus({ now: Date.now });
     const mounted = mountStreamCard(document, els.card, { debug, livekitEnabled: LIVEKIT_ENABLED, streamStatus });
@@ -98,11 +103,19 @@ export function mountPublicPage() {
     }
   }
 
-  // Rend le statut de flux (Lot 4G). Appelé à chaque header de flux reçu et à
-  // chaque tick 1 s (pour rafraîchir la fraîcheur : un état peut devenir STALE
-  // sans nouveau header -> STATUT INDISPONIBLE).
+  // Rend le statut de flux (Lot 4G) + le compteur d'auditeurs (Lot 5). Appelé à
+  // chaque header de flux reçu et à chaque tick 1 s (pour rafraîchir la fraîcheur :
+  // un état peut devenir STALE sans nouveau header -> STATUT INDISPONIBLE /
+  // « Auditeurs : — »). Le compteur est mis à jour seulement si le libellé change
+  // (discrétion aria-live : on ne réécrit pas le même texte à chaque tick).
   function renderStreamState() {
-    if (streamStatus && streamEls) renderStreamStatus(streamStatus.getSnapshot(), streamEls);
+    if (!streamStatus) return;
+    const snap = streamStatus.getSnapshot();
+    if (streamEls) renderStreamStatus(snap, streamEls);
+    if (streamCountEl && snap.listenerCountLabel !== lastListenerCountLabel) {
+      streamCountEl.textContent = snap.listenerCountLabel;
+      lastListenerCountLabel = snap.listenerCountLabel;
+    }
   }
 
   setInterval(() => {
@@ -140,7 +153,7 @@ export function mountPublicPage() {
     } else {
       const routed = routeControl(data, (header, value) => {
         state.set(header, value);
-        renderField(header, value, els);
+        renderField(header, value, els, document);
         const key = fieldElementKey(header);
         if (key) flashElement(els[key]);
       });
@@ -192,7 +205,13 @@ export function mountPublicPage() {
 
   if (LIVEKIT_ENABLED) {
     import('./listener/listenerSection.js')
-      .then(({ mountListenerSection }) => { listenerApi = mountListenerSection({ mountAfter: streamAnchor }); })
+      .then(({ mountListenerSection }) => {
+        listenerApi = mountListenerSection({ mountAfter: streamAnchor });
+        // Lot 5 : récupère le span de compteur d'auditeurs après montage de la
+        // section listener, puis rafraîchit immédiatement le libellé.
+        streamCountEl = document.getElementById('lk-listener-count');
+        renderStreamState();
+      })
       .catch((e) => console.error('[LiveKit] section listener indisponible :', e));
   }
 

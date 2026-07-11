@@ -157,3 +157,22 @@ listener v1.1.2.
 - Aucune connexion listener nécessaire pour voir le statut.
 - Listener inchangé : bouton ÉCOUTER LE DIRECT, lecture, mute, atténuation, iOS.
 - `?debug=1` public : champs flux cohérents ; `?debug=1` Control Room : `streamPresence` présent.
+
+## Suite — Lot 5 (extension additive)
+
+Le mécanisme de flux direct a été étendu par le **Lot 5** (voir
+`docs/bmad/16-rich-sound-link-and-listener-count.md`) :
+
+- Un **5ᵉ header public** `stream_listener_count` a été ajouté à `STREAM_HEADERS`
+  (`src/collabHub/messageRouter.js`). Il transporte le **nombre** d'auditeurs
+  distants (aucune identité/SID). La page publique l'observe et le rend via
+  `streamStatus` (`normalizeCount`, `formatListenerCount`, fraîcheur dédiée
+  `listenerCountReceivedAt`).
+- La publication réutilise le même `publishClient` (register puis deliver) et le
+  même `streamPresencePublisher` (5ᵉ emit, transition immédiate sur changement
+  du compteur, `stop` publie `0`).
+- La carte de flux direct (`stream-card`) reste **debug-only** ; le compteur
+  d'auditeurs, lui, est visible sur `/` et `/?debug=1` (span dédié dans la
+  section listener, `aria-live="polite"`).
+
+Aucun changement du patch Max, des 5 champs `sound_*`, ni du moteur listener.

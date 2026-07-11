@@ -40,6 +40,27 @@ export function clamp01(v) {
   return n;
 }
 
+// Normalise un compteur d'auditeurs reçu via Collab-Hub (Lot 5, partie B).
+// Règle documentée :
+//   - null/undefined/non-fini/négatif -> null (invalide -> "Auditeurs : —") ;
+//   - décimal -> entier tronqué vers le bas (Math.floor).
+// Retourne donc un entier >= 0, ou null si la valeur est inexploitable.
+export function normalizeCount(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}
+
+// Formate un compteur d'auditeurs valide (entier >= 0) en libellé public.
+// Singulier : "0 auditeur" / "1 auditeur" ; pluriel : "N auditeurs" (N >= 2).
+// Ne doit être appelé qu'avec un entier valide ; par sécurité, toute valeur
+// non exploitable -> "Auditeurs : —".
+export function formatListenerCount(n) {
+  if (!Number.isFinite(n) || n < 0) return 'Auditeurs : —';
+  return n >= 2 ? `${n} auditeurs` : `${n} auditeur`;
+}
+
 // Normalise la valeur reçue d'un header (tableau -> 1er élément, scalaire -> tel
 // quel). Retourne null si absent / non scalaire exploitable.
 export function parseStreamValue(values) {
@@ -95,9 +116,15 @@ export function createStreamStatus({ now = Date.now } = {}) {
   let peak = null;        // 0..1 | null
   let updatedAt = null;   // timestamp publié par la Control Room (epoch ms)
   let receivedAt = null;   // heure locale de dernière réception d'un header de flux
+  // Lot 5 (partie B) : compteur public d'auditeurs. `listenerCount` = dernier
+  // compte valide (entier >= 0) ou null (jamais reçu / invalide). Aucune
+  // identité/SID d'auditeur n'est stocké — uniquement le nombre.
+  let listenerCount = null;
+  let listenerCountReceivedAt = null;
+  let rawListenerCount = null;
   // Diagnostic renforcé (hotfix Lot 4G) : compteurs par header, dernier header,
   // dernières valeurs brutes reçues. Aucun secret (valeurs publiques 0..1 / bool / ts).
-  const receivedCount = { stream_onair: 0, stream_level: 0, stream_peak: 0, stream_updated_at: 0 };
+  const receivedCount = { stream_onair: 0, stream_level: 0, stream_peak: 0, stream_updated_at: 0, stream_listener_count: 0 };
   const rawLastValues = {};
   let lastStreamHeader = null;
 
@@ -120,6 +147,14 @@ export function createStreamStatus({ now = Date.now } = {}) {
     } else if (header === 'stream_updated_at') {
       const ts = parseTimestamp(v);
       if (ts !== null) updatedAt = ts;
+    } else if (header === 'stream_listener_count') {
+      // Compteur d'auditeurs : valide -> entier ; invalide/négatif -> null
+      // (affiché "Auditeurs : —"). Une valeur invalide marque le compte inconnu
+      // (on n'affiche JAMAIS un ancien compte comme s'il était frais).
+      rawListenerCount = v;
+      const n = normalizeCount(v);
+      listenerCount = n;
+      listenerCountReceivedAt = now();
     }
   }
 
@@ -146,6 +181,17 @@ export function createStreamStatus({ now = Date.now } = {}) {
       signal = STREAM_SIGNAL.SILENT;
     }
 
+    // Lot 5 (partie B) : fraîcheur DU compteur d'auditeurs (horloge locale de
+    // réception). On ne publie jamais un compte ancien comme frais : si le
+    // header stream_listener_count n'a pas été reçu récemment -> "Auditeurs : —".
+    const listenerAgeMs = listenerCountReceivedAt === null ? null : t - listenerCountReceivedAt;
+    const listenerCountKnown = listenerCount !== null
+      && listenerAgeMs !== null
+      && listenerAgeMs <= STALE_MS;
+    const listenerCountLabel = listenerCountKnown
+      ? formatListenerCount(listenerCount)
+      : 'Auditeurs : —';
+
     return {
       onAir: onAir,
       level: level ?? 0,
@@ -156,6 +202,11 @@ export function createStreamStatus({ now = Date.now } = {}) {
       signalPresent: signal === STREAM_SIGNAL.PRESENT,
       signal,
       computedStatus: status,
+      // Compteur public d'auditeurs (Lot 5). Aucune identité/SID exposé.
+      listenerCount: listenerCountKnown ? listenerCount : null,
+      listenerCountKnown,
+      listenerCountLabel,
+      listenerCountReceivedAt,
     };
   }
 
@@ -169,6 +220,15 @@ export function createStreamStatus({ now = Date.now } = {}) {
       lastStreamHeader,
       lastReceivedAt: receivedAt,
       rawLastValues: { ...rawLastValues },
+      // Lot 5 (partie B) : diagnostic du compteur d'auditeurs. Aucune identité/SID.
+      rawListenerCount,
+      listenerCount,
+      listenerCountKnown: listenerCount !== null && listenerCountReceivedAt !== null
+        && (now() - listenerCountReceivedAt) <= STALE_MS,
+      listenerCountLabel: (listenerCount !== null && listenerCountReceivedAt !== null
+        && (now() - listenerCountReceivedAt) <= STALE_MS)
+        ? formatListenerCount(listenerCount) : 'Auditeurs : —',
+      listenerCountReceivedAt,
     };
   }
 
@@ -178,6 +238,7 @@ export function createStreamStatus({ now = Date.now } = {}) {
     getDiagnostics,
     reset() {
       onAir = null; level = null; peak = null; updatedAt = null; receivedAt = null;
+      listenerCount = null; listenerCountReceivedAt = null; rawListenerCount = null;
       for (const k of Object.keys(receivedCount)) receivedCount[k] = 0;
       for (const k of Object.keys(rawLastValues)) delete rawLastValues[k];
       lastStreamHeader = null;

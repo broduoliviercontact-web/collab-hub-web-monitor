@@ -119,7 +119,11 @@ npm run dev                # http://localhost:5173 (ou port suivant)
 5. Vérifier la mise à jour temps réel des trois blocs.
 6. Modifier uniquement le titre dans Max -> seul le titre change sur la page.
 7. Tester une URL valide (`https://…`) -> lien « En savoir plus » ; une URL
-   `javascript:`/vide -> lien masqué.
+   `javascript:`/vide -> lien masqué. Syntaxe enrichie `sound_link` (Lot 5) :
+   `[Tom Johnson]{https://example.com} aime les nombres.` -> seul « Tom Johnson »
+   est cliquable, texte avant/après conservé. `javascript:`/`data:`/`file:` et le
+   HTML reçu ne sont **jamais** interprétés (rendu via TextNode + `<a>`, aucun
+   `innerHTML`). Voir « sound_link enrichi » ci-dessous.
 8. Couper puis rétablir le réseau -> la dernière valeur reste affichée, les
    nouvelles valeurs arrivent après reconnexion.
 9. Tester le rendu mobile via les DevTools.
@@ -193,10 +197,12 @@ contenu, puis les publications en temps réel le mettent à jour.
   inconnu, type non string, champ trop long) est **ignoré** → fallback sur les
   valeurs par défaut. `sound_link` est **repassé par la validation URL
   existante** au rendu (http/https uniquement, `javascript:`/`data:`/vide →
-  lien masqué).
+  lien masqué). La syntaxe enrichie `[label]{url}` (Lot 5) est elle aussi
+  validée (http/https uniquement ; syntaxe incomplète ou protocole interdit →
+  texte brut non cliquable, jamais de HTML interprété).
 - **Sécurité** : aucune donnée HTML, aucun `innerHTML` (rendu via
-  `textContent`/`setAttribute`), rien n'est envoyé vers un serveur. En cas
-  d'erreur d'accès au storage, l'application ne casse pas.
+  `textContent`/`setAttribute`/`createTextNode`), rien n'est envoyé vers un
+  serveur. En cas d'erreur d'accès au storage, l'application ne casse pas.
 - **Diagnostic `?debug=1`** : « Dernière restauration locale », « Dernier état
   sauvegardé », et un bouton **« Effacer l'état local »** (avec confirmation).
   Non affiché sur la page publique.
@@ -407,6 +413,42 @@ multi-listener 3 appareils / réseaux différents + iOS). Voir `docs/bmad/13`,
 Collab-Hub (`stream_onair`, `stream_level`, `stream_peak`, `stream_updated_at`,
 valeurs publiques, aucun secret) — indépendant de la connexion listener (moteur
 v1.1.2 et bouton inchangés). Voir `docs/bmad/15-public-stream-status.md`.
+
+**Lot 5 — sound_link enrichi + compteur public d'auditeurs** (additif, aucun
+changement du patch Max ni des 5 champs) :
+
+- **sound_link enrichi** — le header `sound_link` existe toujours ; la page
+  accepte en plus la syntaxe personnalisée `[label]{url}` (texte avant/après
+  autorisé, un seul lien enrichi par valeur). Exemple :
+  `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres.`
+  → rendu « Tom Johnson aime les nombres. » avec seul « Tom Johnson » cliquable.
+  Les URL simples historiques (`https://example.com`) restent valides
+  (« En savoir plus »). La syntaxe Markdown `[label](url)` n'est **pas**
+  supportée (ambiguïté avec les parenthèses des URLs). Sécurité : aucun
+  `innerHTML`, HTML reçu jamais interprété (TextNode + `<a>` via APIs DOM),
+  seuls `http:`/`https:` acceptés (`javascript:`/`data:`/`file:` refusés),
+  `target="_blank"` + `rel="noopener noreferrer"`. Syntaxe incomplète ou
+  protocole interdit → texte brut non cliquable. Logique dans
+  `src/ui/renderSoundInfo.js` (`parseSoundLink`).
+
+- **Compteur public d'auditeurs** — la page publique affiche, près du bouton
+  « ÉCOUTER LE DIRECT », un indicateur discret : `0 auditeur` / `1 auditeur` /
+  `N auditeurs` ; si le statut est indisponible/stale : `Auditeurs : —`. Source
+  de vérité : la Control Room compte les participants distants LiveKit dont
+  l'identity commence par `listener-` (un onglet/device = un auditeur) et
+  publie le **nombre** sur Collab-Hub via le nouveau header public
+  `stream_listener_count` (réutilise le publisher existant : register puis
+  deliver, file d'attente si déconnecté, réenregistrement à la reconnexion).
+  **Aucune identité ni SID d'auditeur n'est jamais publié ni affiché** —
+  seulement le compte. Le compteur est recalculé à la connexion, à chaque
+  `participantConnected`/`participantDisconnected`, après `reconnected`, et
+  publié immédiatement sur changement (hors throttle VU-mètre) ; à l'arrêt du
+  direct : `0`. Logique dans `src/audio/listenerCount.js` (`countLiveListeners`),
+  `src/state/streamStatus.js` (`normalizeCount`, `formatListenerCount`), le
+  publisher LiveKit (`liveListenerCount` dans le snapshot) et
+  `src/control-room/streamPresencePublisher.js`. Visible sur `/` et `/?debug=1`
+  (la stream-card reste, elle, debug-only). Voir
+  `docs/bmad/16-rich-sound-link-and-listener-count.md`.
 
 > **Lot 4F.1 — variable serveur requise** : `CONTROL_ROOM_SESSION_SECRET`
 > (secret de signature HMAC, jamais `VITE_`, distinct de toute autre variable)

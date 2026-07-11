@@ -73,6 +73,21 @@ export function buildListenerDOM(documentRef = (typeof document !== 'undefined' 
   status.textContent = STATUS_LABELS.idle;
   statusLine.append(dot, ' ', status);
 
+  // Lot 5 (partie B) : compteur public d'auditeurs, près du bouton ÉCOUTER LE
+  // DIRECT. Valeur publiée par la Control Room via le header stream_listener_count
+  // (rendue séparément par publicPage depuis streamStatus). Aucune identité/SID
+  // d'auditeur n'est jamais affiché — seulement un libellé « N auditeur(s) » ou
+  // « Auditeurs : — » si indisponible. aria-live="polite" : annonce discrète aux
+  // lecteurs d'écran (on évite de réannoncer chaque fluctuation côté publicPage).
+  const countLine = doc.createElement('p');
+  countLine.className = 'lk-count-line';
+  const count = doc.createElement('span');
+  count.id = 'lk-listener-count';
+  count.className = 'listener-count';
+  count.setAttribute('aria-live', 'polite');
+  count.textContent = 'Auditeurs : —';
+  countLine.append(count);
+
   const controls = doc.createElement('div');
   controls.className = 'lk-controls';
 
@@ -133,14 +148,14 @@ export function buildListenerDOM(documentRef = (typeof document !== 'undefined' 
   volumeWrap.append(volume, ' ', volumeLabel);
 
   controls.append(primary, activate, speaker, attenBadge, attenBtn, volumeWrap);
-  block.append(title, statusLine, controls);
+  block.append(title, statusLine, countLine, controls);
   section.append(block);
 
   if (mountAfter && mountAfter.parentNode) {
     mountAfter.parentNode.insertBefore(section, mountAfter.nextSibling);
   }
 
-  const els = { section, status, dot, primary, activate, speaker, attenBadge, attenBtn, volume, volumeLabel, volumeWrap };
+  const els = { section, status, dot, count, primary, activate, speaker, attenBadge, attenBtn, volume, volumeLabel, volumeWrap };
   return { section, els };
 }
 
