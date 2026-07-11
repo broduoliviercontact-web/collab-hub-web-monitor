@@ -1705,6 +1705,51 @@ function makeFakeListenerRoomClass({ connectFail = false } = {}) {
   FakeRoom.lastInstance = null;
   return FakeRoom;
 }
+
+// Lot 4F.2 : faux Room simulant un performer DÉJÀ en train de publier quand un
+// listener rejoint (room.remoteParticipants + trackPublications déjà peuplés).
+// emitSubscribed=false : la piste est déjà là SANS TrackSubscribed (la race que
+// le fix doit rattraper via attachExistingAudioTracks). emitSubscribed=true :
+// un TrackSubscribed arrive en microtask APRÈS connect (isConnected déjà true)
+// pour vérifier l'idempotence (pas de double attach).
+function makeFakeListenerRoomWithExistingTrack({
+  connectFail = false,
+  emitSubscribed = false,
+  trackName = 'program-audio',
+  participantIdentity = 'performer-A',
+  trackSid = 'tr-perf',
+} = {}) {
+  const track = { kind: 'audio', name: trackName, sid: trackSid, source: 'microphone' };
+  class FakeRoom {
+    constructor(opts) {
+      this.opts = opts; this._connected = false; this._disconnected = false;
+      this._listeners = {};
+      const participant = {
+        identity: participantIdentity,
+        trackPublications: new Map([[trackSid, { kind: 'audio', name: trackName, trackSid, track }]]),
+      };
+      this.remoteParticipants = new Map([[participantIdentity, participant]]);
+      FakeRoom.lastInstance = this;
+    }
+    on(ev, cb) { (this._listeners[ev] = this._listeners[ev] || []).push(cb); }
+    off(ev) { delete this._listeners[ev]; }
+    removeAllListeners() { this._listeners = {}; }
+    _emit(ev, ...args) { (this._listeners[ev] || []).forEach((cb) => cb(...args)); }
+    async connect() {
+      if (connectFail) throw new Error('connect failed');
+      this._connected = true;
+      if (emitSubscribed) {
+        const self = this;
+        // microtask : l'événement arrive APRÈS connect (isConnected déjà true),
+        // comme livekit-client peut le faire pour une piste déjà publiée.
+        Promise.resolve().then(() => self._emit('trackSubscribed', track, { trackSid }, self.remoteParticipants.get(participantIdentity)));
+      }
+    }
+    async disconnect() { this._disconnected = true; this._connected = false; }
+  }
+  FakeRoom.lastInstance = null;
+  return FakeRoom;
+}
 function makeFakeListenerTokenClient({ identity = 'listener-test', fail = false } = {}) {
   const calls = [];
   return {
@@ -3626,4 +3671,61 @@ test('enceinte : bouton -20 dB visible (fallback clavier/tactile) quand piste', 
 test('enceinte : ATTENUATION_GAIN = 10^(-20/20) = 0.1', () => {
   assert.equal(ATTENUATION_GAIN, 0.1);
   assert.equal(ATTENUATION_DB, -20);
+});
+
+// ================= Tests multi-listener — Lot 4F.2 (race piste déjà publiée) ====
+
+// 1. 2e listener : performer déjà en train de publier, AUCUN TrackSubscribed
+//    -> la piste déjà présente doit être rattachée (fix attachExistingAudioTracks).
+test('listener4F2 : 2e listener, performer déjà publié, pas de TrackSubscribed -> piste rattachée', async () => {
+  const sink = makeFakeAudioSink();
+  const RoomClass = makeFakeListenerRoomWithExistingTrack({ emitSubscribed: false });
+  const l = makeListener({ RoomClass, audioSink: sink });
+  const snap = await l.connect();
+  assert.equal(snap.roomName, 'main');
+  assert.equal(snap.hasAudioTrack, true, 'piste déjà publiée rattachée');
+  assert.equal(snap.audioTrackSid, 'tr-perf');
+  assert.equal(snap.performerIdentity, 'performer-A');
+  assert.equal(sink._calls.attach.length, 1);
+  await flush();
+  assert.equal(l.getSnapshot().state, 'playing');
+  l.destroy();
+});
+
+// 2. Idempotence : un TrackSubscribed arrive APRÈS connect (isConnected true)
+//    alors que la piste a déjà été rattachée -> pas de double attach.
+test('listener4F2 : TrackSubscribed tardif + piste existante -> pas de double rattachement', async () => {
+  const sink = makeFakeAudioSink();
+  const RoomClass = makeFakeListenerRoomWithExistingTrack({ emitSubscribed: true });
+  const l = makeListener({ RoomClass, audioSink: sink });
+  await l.connect();
+  await flush();
+  const s = l.getSnapshot();
+  assert.equal(s.hasAudioTrack, true);
+  assert.equal(s.audioTrackSid, 'tr-perf');
+  assert.equal(s.performerIdentity, 'performer-A');
+  assert.equal(sink._calls.attach.length, 1, 'attachTrack appelé une seule fois');
+  assert.equal(s.state, 'playing');
+  l.destroy();
+});
+
+// 3. Aucun participant déjà présent ne déclenche ParticipantConnected -> le
+//    compteur reste 0 (attendu), mais la piste est bien rattachée.
+test('listener4F2 : participant déjà présent -> participants=0 mais piste rattachée', async () => {
+  const RoomClass = makeFakeListenerRoomWithExistingTrack({});
+  const l = makeListener({ RoomClass });
+  const snap = await l.connect();
+  assert.equal(snap.participantCount, 0, 'ParticipantConnected ne se déclenche pas pour les participants déjà présents');
+  assert.equal(snap.hasAudioTrack, true);
+  l.destroy();
+});
+
+// 4. Aucune piste déjà présente -> comportement inchangé (waiting_for_track).
+test('listener4F2 : aucun participant -> waiting_for_track (inchangé)', async () => {
+  const RoomClass = makeFakeListenerRoomClass();
+  const l = makeListener({ RoomClass });
+  const snap = await l.connect();
+  assert.equal(snap.hasAudioTrack, false);
+  assert.equal(snap.state, 'waiting_for_track');
+  l.destroy();
 });

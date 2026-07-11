@@ -204,6 +204,32 @@ export function createLiveKitListener({
     }
   }
 
+  // Lot 4F.2 : un performer peut déjà publier quand un listener rejoint. Les
+  // publications audio déjà présentes au moment de connect() ne déclenchent pas
+  // fiablement TrackSubscribed APRÈS le câblage des listeners (race : l'événement
+  // peut être émis pendant la résolution de room.connect(), avant que les
+  // handlers ne soient en place côté application). On rattache donc
+  // explicitement, après connect(), toute publication audio dont la piste est
+  // déjà présente dans room.remoteParticipants. Idempotent avec onTrackSubscribed
+  // (selectProgramTrack ignore la piste déjà courante -> pas de double attach).
+  function attachExistingAudioTracks() {
+    if (!room || destroyed) return;
+    const participants = room.remoteParticipants;
+    if (!participants) return;
+    const iterP = typeof participants.values === 'function'
+      ? participants.values() // Map (livekit-client)
+      : Object.values(participants); // objet plat (tests)
+    for (const participant of iterP) {
+      if (!participant || !participant.trackPublications) continue;
+      const pubs = participant.trackPublications;
+      const iterPub = typeof pubs.values === 'function' ? pubs.values() : Object.values(pubs);
+      for (const pub of iterPub) {
+        if (pub && pub.kind === trackKinds.audio && pub.track) {
+          onTrackSubscribed(pub.track, pub, participant);
+        }
+      }
+    }
+  }
   function onParticipantConnected() { participantCount++; notify(); }
   function onParticipantDisconnected() { if (participantCount > 0) participantCount--; notify(); }
 
@@ -296,8 +322,13 @@ export function createLiveKitListener({
       throw err(LISTENER_ERRORS.connect, 'Échec connexion Room.', e);
     }
 
-    // 3. attendre une piste distante (le performer peut être absent).
-    setState('waiting_for_track');
+    // 3. rattacher les pistes déjà publiées par les participants présents avant
+    //    que TrackSubscribed ne soit (éventuellement) émis (race multi-listener
+    //    : un performer déjà en train de diffuser quand un 2e listener rejoint).
+    //    Si une piste a été rattachée, on laisse attemptPlay() piloter l'état
+    //    (playing/waiting_for_user/track_available) ; sinon on attend une piste.
+    attachExistingAudioTracks();
+    if (!currentTrack) setState('waiting_for_track');
     return getSnapshot();
   }
 
