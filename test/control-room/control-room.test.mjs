@@ -16,11 +16,12 @@ import { createControlRoomGate, GATE_STATES } from '../../src/control-room/contr
 import { readFileSync } from 'node:fs';
 import {
   createStreamStatus, routeStreamControl,
-  STREAM_HEADERS, STALE_MS, SIGNAL_THRESHOLD,
+  STALE_MS, SIGNAL_THRESHOLD,
   STREAM_STATUS, STREAM_SIGNAL,
   clamp01, parseOnAir, parseTimestamp,
   normalizeCount, formatListenerCount,
 } from '../../src/state/streamStatus.js';
+import { STREAM_HEADERS } from '../../src/collabHub/messageRouter.js';
 import {
   createStreamPresencePublisher, DEFAULT_STREAM_THROTTLE_MS,
 } from '../../src/control-room/streamPresencePublisher.js';

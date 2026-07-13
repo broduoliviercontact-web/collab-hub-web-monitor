@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeValue, routeControl, KNOWN_HEADERS } from '../../src/collabHub/messageRouter.js';
+import { normalizeValue, routeControl, KNOWN_HEADERS, STREAM_HEADERS } from '../../src/collabHub/messageRouter.js';
 import { createSoundState, DEFAULTS } from '../../src/state/soundState.js';
 import { renderField, isSafeHttpUrl, parseSoundLink } from '../../src/ui/renderSoundInfo.js';
 import { createObserveGuard, wireSocket } from '../../src/collabHub/observeGuard.js';
@@ -17,7 +17,7 @@ import {
 } from '../../src/state/freshness.js';
 import {
   createStreamStatus, routeStreamControl,
-  STREAM_HEADERS, STALE_MS, SIGNAL_THRESHOLD,
+  STALE_MS, SIGNAL_THRESHOLD,
   STREAM_STATUS, STREAM_SIGNAL,
   clamp01, parseOnAir, parseTimestamp,
   normalizeCount, formatListenerCount,
