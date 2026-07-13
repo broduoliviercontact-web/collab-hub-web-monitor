@@ -14,6 +14,7 @@ import {
   verifySessionValue,
   readSessionCookie,
 } from '../../src/server/controlRoomSession.js';
+import { sendJson, readJsonBody } from '../../src/server/http.js';
 
 const ROOM_NAME = 'main';
 const TTL_SECONDS = 7200; // 2 heures (performer et listener)
@@ -84,57 +85,32 @@ export function validateConfig(env = process.env) {
   return { ok, missing, reasons };
 }
 
-function json(res, status, body, extraHeaders = {}) {
-  const payload = JSON.stringify(body);
-  if (typeof res.setHeader === 'function') {
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'no-store');
-    for (const [k, v] of Object.entries(extraHeaders)) res.setHeader(k, v);
-  }
-  if (typeof res.status === 'function') res.status(status);
-  else res.statusCode = status;
-  if (typeof res.end === 'function') res.end(payload);
-  else if (typeof res.json === 'function') res.json(body);
-  return res;
-}
-
-// Extrait le body JSON de la requête (Vercel parse déjà -> objet ; tests -> string).
-function readBody(req) {
-  let body = req.body;
-  if (body == null) return null;
-  if (typeof body === 'string' || Buffer.isBuffer(body)) {
-    try { return JSON.parse(body.toString()); } catch { return undefined; } // undefined = JSON invalide
-  }
-  if (typeof body === 'object') return body;
-  return null;
-}
-
 // Handler serverless Vercel : export default async function handler(req, res).
 // `env` injectable pour les tests (défaut : process.env en production).
 // `now` injectable pour les tests (défaut : Date.now).
 export default async function handler(req, res, env = process.env, { now = Date.now } = {}) {
   // 1. méthode : POST uniquement.
   if (!req || req.method !== 'POST') {
-    return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'POST' });
+    return sendJson(res, 405, { error: 'method_not_allowed' }, { Allow: 'POST' });
   }
 
   // 2. body JSON.
-  const body = readBody(req);
-  if (body === undefined) return json(res, 400, { error: 'invalid_request' });
-  if (body === null || typeof body !== 'object') return json(res, 400, { error: 'invalid_request' });
+  const body = readJsonBody(req);
+  if (body === undefined) return sendJson(res, 400, { error: 'invalid_request' });
+  if (body === null || typeof body !== 'object') return sendJson(res, 400, { error: 'invalid_request' });
 
   // 3. configuration serveur (avant rôle/mot de passe -> 503 générique).
   const cfg = validateConfig(env);
   if (!cfg.ok) {
     // Log serveur SANS valeur secrète (uniquement les noms de variables).
     console.error('[livekit/token] configuration incomplète:', cfg.missing.join(',') || cfg.reasons.join(','));
-    return json(res, 503, { error: 'livekit_unavailable' });
+    return sendJson(res, 503, { error: 'livekit_unavailable' });
   }
 
   // 4. rôle.
   const role = body.role;
   if (role !== 'performer' && role !== 'listener') {
-    return json(res, 400, { error: 'invalid_role' });
+    return sendJson(res, 400, { error: 'invalid_role' });
   }
 
   // 5. authentification performer (Lot 4F.1) : session Control Room signée via
@@ -145,12 +121,12 @@ export default async function handler(req, res, env = process.env, { now = Date.
     const sessCfg = validateSessionConfig(env);
     if (!sessCfg.ok) {
       console.error('[livekit/token] configuration session incomplète:', sessCfg.missing.join(',') || sessCfg.reasons.join(','));
-      return json(res, 503, { error: 'livekit_unavailable' });
+      return sendJson(res, 503, { error: 'livekit_unavailable' });
     }
     const cookieValue = readSessionCookie(req);
     const sess = verifySessionValue(cookieValue, env, { now });
     if (!sess.authenticated) {
-      return json(res, 401, { error: 'unauthorized' });
+      return sendJson(res, 401, { error: 'unauthorized' });
     }
   }
 
@@ -166,10 +142,10 @@ export default async function handler(req, res, env = process.env, { now = Date.
     token = await at.toJwt();
   } catch (err) {
     console.error('[livekit/token] émission token échouée (détail masqué)');
-    return json(res, 503, { error: 'livekit_unavailable' });
+    return sendJson(res, 503, { error: 'livekit_unavailable' });
   }
 
-  return json(res, 200, {
+  return sendJson(res, 200, {
     token,
     url: env.LIVEKIT_URL,
     room: ROOM_NAME,

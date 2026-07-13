@@ -18,51 +18,28 @@ import {
   COOKIE_NAME,
   SESSION_TTL_SECONDS,
 } from '../../src/server/controlRoomSession.js';
-
-function json(res, status, body, extraHeaders = {}) {
-  const payload = JSON.stringify(body);
-  if (typeof res.setHeader === 'function') {
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'no-store');
-    for (const [k, v] of Object.entries(extraHeaders)) res.setHeader(k, v);
-  }
-  if (typeof res.status === 'function') res.status(status);
-  else res.statusCode = status;
-  if (typeof res.end === 'function') res.end(payload);
-  else if (typeof res.json === 'function') res.json(body);
-  return res;
-}
-
-function readBody(req) {
-  let body = req.body;
-  if (body == null) return null;
-  if (typeof body === 'string' || Buffer.isBuffer(body)) {
-    try { return JSON.parse(body.toString()); } catch { return undefined; }
-  }
-  if (typeof body === 'object') return body;
-  return null;
-}
+import { sendJson, readJsonBody } from '../../src/server/http.js';
 
 export default async function handler(req, res, env = process.env, { now = Date.now } = {}) {
   if (!req || req.method !== 'POST') {
-    return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'POST' });
+    return sendJson(res, 405, { error: 'method_not_allowed' }, { Allow: 'POST' });
   }
 
-  const body = readBody(req);
-  if (body === undefined) return json(res, 400, { error: 'invalid_request' });
-  if (body === null || typeof body !== 'object') return json(res, 400, { error: 'invalid_request' });
+  const body = readJsonBody(req);
+  if (body === undefined) return sendJson(res, 400, { error: 'invalid_request' });
+  if (body === null || typeof body !== 'object') return sendJson(res, 400, { error: 'invalid_request' });
 
   const cfg = validateSessionConfig(env);
   if (!cfg.ok) {
     // Log serveur SANS valeur secrète (uniquement les noms de variables).
     console.error('[control-room/login] configuration incomplète:', cfg.missing.join(',') || cfg.reasons.join(','));
-    return json(res, 503, { error: 'auth_unavailable' });
+    return sendJson(res, 503, { error: 'auth_unavailable' });
   }
 
   const provided = typeof body.password === 'string' ? body.password : '';
   // Comparaison timing-safe ; 401 générique (pas de distinction absent/incorrect).
   if (!safeEqualPassword(env.PERFORMER_PASSWORD, provided)) {
-    return json(res, 401, { error: 'unauthorized' });
+    return sendJson(res, 401, { error: 'unauthorized' });
   }
 
   const { value } = createSessionValue(env, { now });
@@ -70,7 +47,7 @@ export default async function handler(req, res, env = process.env, { now = Date.
   if (typeof res.setHeader === 'function') {
     res.setHeader('Set-Cookie', setCookieString({ name: COOKIE_NAME, value, secure }));
   }
-  return json(res, 200, { authenticated: true, expiresIn: SESSION_TTL_SECONDS });
+  return sendJson(res, 200, { authenticated: true, expiresIn: SESSION_TTL_SECONDS });
 }
 
 export { COOKIE_NAME, SESSION_TTL_SECONDS };
