@@ -468,6 +468,51 @@ test('listener : span compteur ne contient aucune identité/SID', () => {
   assert.ok(!/sid|identity|token|secret/i.test(els.count.id));
 });
 
+// 36b. issue #1 : une action volume / mute / unmute / atténuation NE modifie
+// JAMAIS le span du compteur d'auditeurs. renderListenerState (appelé à chaque
+// snapshot listener, y compris sur setVolume/setMuted/toggleAttenuation) ne
+// touche pas els.count — le libellé est écrit par publicStreamRuntime depuis
+// streamStatus. On pinne cette invariante pour qu'aucun refactor de la vue
+// listener ne réintroduise une réinitialisation du compteur sur action audio.
+// (Non-régression : ce test passe avant et après le correctif streamStatus ; il
+// verrouille le périmètre « volume ≠ compteur ».)
+
+test('issue #1 : volume / mute / unmute / atténuation ne modifient pas le span compteur', () => {
+  const doc = fakeDocument();
+  const { els } = buildListenerDOM(doc, null);
+  // Simule publicStreamRuntime.render() qui écrit le libellé du compteur :
+  els.count.textContent = '2 auditeurs';
+
+  // Changement de volume (snapshot playing, volume 0.5) :
+  renderListenerState({ state: 'playing', volume: 0.5, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.count.textContent, '2 auditeurs', 'volume : compteur inchangé');
+
+  // Mute :
+  renderListenerState({ state: 'playing', volume: 0.5, muted: true, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.count.textContent, '2 auditeurs', 'mute : compteur inchangé');
+
+  // Unmute :
+  renderListenerState({ state: 'playing', volume: 0.5, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.count.textContent, '2 auditeurs', 'unmute : compteur inchangé');
+
+  // Atténuation -20 dB :
+  renderListenerState({ state: 'playing', volume: 0.5, muted: false, attenuationActive: true, hasAudioTrack: true }, els);
+  assert.equal(els.count.textContent, '2 auditeurs', 'atténuation : compteur inchangé');
+
+  // Volume à 0 puis retour (l'atténuation ne déplace pas le slider) :
+  renderListenerState({ state: 'playing', volume: 0, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.count.textContent, '2 auditeurs', 'volume 0 : compteur inchangé');
+  renderListenerState({ state: 'playing', volume: 0.8, muted: false, attenuationActive: false, hasAudioTrack: true }, els);
+  assert.equal(els.count.textContent, '2 auditeurs', 'volume retour : compteur inchangé');
+
+  // Transitions d'état listener (idle/connecting/playing) ne touchent pas non
+  // plus le compteur.
+  for (const state of ['idle', 'connecting', 'waiting_for_track', 'playing', 'error']) {
+    renderListenerState({ state, volume: 0.8, muted: false, attenuationActive: false, hasAudioTrack: state === 'playing' }, els);
+    assert.equal(els.count.textContent, '2 auditeurs', `état ${state} : compteur inchangé`);
+  }
+});
+
 // 36. routeStreamControl : stream_listener_count routé (header de flux)
 
 test('ops : listener audio non régressé (renderListenerState playing -> bouton ÉCOUTER)', () => {

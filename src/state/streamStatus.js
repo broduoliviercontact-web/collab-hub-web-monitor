@@ -182,13 +182,16 @@ export function createStreamStatus({ now = Date.now } = {}) {
       signal = STREAM_SIGNAL.SILENT;
     }
 
-    // Lot 5 (partie B) : fraîcheur DU compteur d'auditeurs (horloge locale de
-    // réception). On ne publie jamais un compte ancien comme frais : si le
-    // header stream_listener_count n'a pas été reçu récemment -> "Auditeurs : —".
-    const listenerAgeMs = listenerCountReceivedAt === null ? null : t - listenerCountReceivedAt;
-    const listenerCountKnown = listenerCount !== null
-      && listenerAgeMs !== null
-      && listenerAgeMs <= STALE_MS;
+    // Lot 5 (partie B) + issue #1 : le compteur d'auditeurs CONSERVE son
+    // dernier état connu. Le header stream_listener_count est publié sur les
+    // changements de participants (event-driven, pas à chaque tick VU) ; un gate
+    // STALE_MS le ferait revenir à "Auditeurs : —" entre deux publications —
+    // notamment pendant un réglage de volume de plusieurs secondes (le tick 1 s
+    // de la page publique repeindrait "—"). On publie donc le dernier compte
+    // valide tant qu'aucune valeur invalide n'a été reçue ; "Auditeurs : —"
+    // seulement si aucun compte valide n'a jamais été reçu (listenerCount null).
+    // Aucune identité/SID d'auditeur exposé — uniquement le nombre.
+    const listenerCountKnown = listenerCount !== null;
     const listenerCountLabel = listenerCountKnown
       ? formatListenerCount(listenerCount)
       : 'Auditeurs : —';
@@ -203,8 +206,9 @@ export function createStreamStatus({ now = Date.now } = {}) {
       signalPresent: signal === STREAM_SIGNAL.PRESENT,
       signal,
       computedStatus: status,
-      // Compteur public d'auditeurs (Lot 5). Aucune identité/SID exposé.
-      listenerCount: listenerCountKnown ? listenerCount : null,
+      // Compteur public d'auditeurs (Lot 5). Dernier compte valide persistant
+      // (issue #1) ; null uniquement si aucun compte valide n'a été reçu.
+      listenerCount,
       listenerCountKnown,
       listenerCountLabel,
       listenerCountReceivedAt,
@@ -221,13 +225,15 @@ export function createStreamStatus({ now = Date.now } = {}) {
       lastStreamHeader,
       lastReceivedAt: receivedAt,
       rawLastValues: { ...rawLastValues },
-      // Lot 5 (partie B) : diagnostic du compteur d'auditeurs. Aucune identité/SID.
+      // Lot 5 (partie B) + issue #1 : diagnostic du compteur d'auditeurs. Aucune
+      // identité/SID. Comme l'affichage public, on conserve le dernier compte
+      // valide (le gate STALE_MS est retiré pour rester cohérent avec la vue
+      // publique) ; listenerCountReceivedAt reste exposé pour qu'un opérateur
+      // juge de la fraîcheur en mode debug.
       rawListenerCount,
       listenerCount,
-      listenerCountKnown: listenerCount !== null && listenerCountReceivedAt !== null
-        && (now() - listenerCountReceivedAt) <= STALE_MS,
-      listenerCountLabel: (listenerCount !== null && listenerCountReceivedAt !== null
-        && (now() - listenerCountReceivedAt) <= STALE_MS)
+      listenerCountKnown: listenerCount !== null,
+      listenerCountLabel: listenerCount !== null
         ? formatListenerCount(listenerCount) : 'Auditeurs : —',
       listenerCountReceivedAt,
     };
