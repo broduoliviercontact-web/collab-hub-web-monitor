@@ -12,16 +12,13 @@
 
 import './styles/main.css';
 import { connectCollabHub } from './collabHub/socketClient.js';
-import { routeControl, KNOWN_HEADERS, HEARTBEAT_HEADER } from './collabHub/messageRouter.js';
-import { createSoundState, DEFAULTS } from './state/soundState.js';
-import { renderField, flashElement, fieldElementKey } from './ui/renderSoundInfo.js';
 import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
-import { loadSoundState, saveSoundState, clearSoundState } from './state/persist.js';
-import { createFreshnessState, computePublicStatus } from './state/freshness.js';
+import { computePublicStatus } from './state/freshness.js';
 import { buildRuntimeConfig } from './diagnostic/runtimeConfig.js';
 import { createDiagnosticsRuntime } from './public/publicDiagnosticsRuntime.js';
 import { createListenerRuntime } from './public/publicListenerRuntime.js';
 import { createStreamRuntime } from './public/publicStreamRuntime.js';
+import { createContentRuntime } from './public/publicContentRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
 // n'affecte pas le code-splitting. Les chargeurs dynamiques (diag/listener) sont
@@ -94,22 +91,15 @@ export function mountPublicPage(deps = {}) {
     statusDot: doc.getElementById('status-dot'),
   };
 
-  // --- Restauration locale (Lot 3A) : dernier contenu reçu, sinon défauts ---
-  const restored = loadSoundState(storage);
-  const initial = restored ? { ...DEFAULTS, ...restored.fields } : DEFAULTS;
-  const state = createSoundState(initial);
-  for (const h of KNOWN_HEADERS) renderField(h, state.get(h), els, doc);
-
-  let lastSavedAt = restored ? restored.updatedAt : null;
-  let lastLocalRestore = restored ? restored.updatedAt : null;
-
-  // --- État technique de fraîcheur (Lot 3B) ---
-  // `now` injecté (défaut Date.now) -> testable en Node sans horloge réelle.
-  const freshness = createFreshnessState({ now });
-  if (restored && restored.updatedAt) {
-    const ms = new Date(restored.updatedAt).getTime();
-    if (Number.isFinite(ms)) freshness.restoreContent(ms);
-  }
+  // --- Contenu (Lot 3A/3B) : 5 champs sound_*, persistance locale, fraîcheur
+  // contenu Max. Extrait dans publicContentRuntime (issue #7). Le runtime expose
+  // `freshness` (consommé par le statut public + le diag) et un `clear()` (diag).
+  const content = createContentRuntime({
+    doc,
+    els: { title: els.title, author: els.author, subtitle: els.subtitle, description: els.description, linkWrap: els.linkWrap, link: els.link },
+    storage, now,
+  });
+  const freshness = content.freshness;
 
   // --- État de flux direct (Lot 4G) : statut public AVANT connexion LiveKit ---
   // La logique métier (streamStatus, observation des headers stream_*, routage,
@@ -167,24 +157,11 @@ export function mountPublicPage(deps = {}) {
       diag.refreshStream();
       return;
     }
-    if (data && data.header === HEARTBEAT_HEADER) {
-      freshness.onHeartbeat();
-    } else {
-      const routed = routeControl(data, (header, value) => {
-        state.set(header, value);
-        renderField(header, value, els, doc);
-        const key = fieldElementKey(header);
-        if (key) flashElement(els[key]);
-      });
-      if (routed) {
-        freshness.onContentUpdate();
-        const saved = saveSoundState(storage, state.snapshot());
-        if (saved) {
-          lastSavedAt = saved.updatedAt;
-          diag.setLocalSaved(saved.updatedAt);
-        }
-      }
-    }
+    // Contenu (sound_* via routeControl, ou heartbeat) délégué au runtime contenu.
+    // applyControl rend, rafraîchit la fraîcheur, persiste ; retourne le timestamp
+    // sauvegardé (null si heartbeat / non routé / sauvegarde échouée).
+    const savedAt = content.applyControl(data);
+    if (savedAt) diag.setLocalSaved(savedAt);
     recomputePublicState();
     diag.logControl(data);
     diag.refreshFreshness(freshness);
@@ -203,10 +180,10 @@ export function mountPublicPage(deps = {}) {
       collabApi = api;
       stream.observeHeaders(api); // 1re connexion (si déjà connectée, guard idempotent)
       const diagOpts = {
-        initialRestore: lastLocalRestore,
-        initialSaved: lastSavedAt,
+        initialRestore: content.getInitialRestore(),
+        initialSaved: content.getInitialSavedAt(),
         runtimeConfig,
-        clear: () => { const ok = clearSoundState(storage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
+        clear: () => content.clear(),
         livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listener.getApi() ? listener.getApi().getSnapshot() : null }),
         streamDiag: () => stream.diagSnapshot(collabApi),
       };
