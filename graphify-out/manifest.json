@@ -1,23 +1,23 @@
 {
   "api/control-room/login.js": {
-    "mtime": 1783716001.5934362,
-    "ast_hash": "40c8053d21d28be8cf604e0ff7766a5b",
-    "semantic_hash": "40c8053d21d28be8cf604e0ff7766a5b"
+    "mtime": 1783952030.4660525,
+    "ast_hash": "feee556ade3f858b38f7cd06c5c29506",
+    "semantic_hash": ""
   },
   "api/control-room/logout.js": {
-    "mtime": 1783716009.417032,
-    "ast_hash": "05748288c567efc1ab13765aee62c05c",
-    "semantic_hash": "05748288c567efc1ab13765aee62c05c"
+    "mtime": 1783952030.4662406,
+    "ast_hash": "400a08b0882e8679cf1b684ac7d72e63",
+    "semantic_hash": ""
   },
   "api/control-room/session.js": {
-    "mtime": 1783716015.8439631,
-    "ast_hash": "5fc944f88615353d86a4eb1d6958c96c",
-    "semantic_hash": "5fc944f88615353d86a4eb1d6958c96c"
+    "mtime": 1783952030.4664154,
+    "ast_hash": "6598e53dc383520af2a4fb5beb83d18a",
+    "semantic_hash": ""
   },
   "api/livekit/token.js": {
-    "mtime": 1783716027.9461572,
-    "ast_hash": "11dc216f97fc793e568fd8f587d45207",
-    "semantic_hash": "11dc216f97fc793e568fd8f587d45207"
+    "mtime": 1783952030.4666443,
+    "ast_hash": "9e33f41ce040a31245181c3dd6481cc7",
+    "semantic_hash": ""
   },
   "max/validate-maxpat.mjs": {
     "mtime": 1783696957.4080744,
@@ -25,9 +25,9 @@
     "semantic_hash": "b708b9e412f4361de8f6d625ed2bc090"
   },
   "package.json": {
-    "mtime": 1783760590.7909415,
-    "ast_hash": "977130574f158b3744f28841b48a22dc",
-    "semantic_hash": "977130574f158b3744f28841b48a22dc"
+    "mtime": 1783946495.2469163,
+    "ast_hash": "95d2395bcaacdaad0ad506bbe978d29d",
+    "semantic_hash": ""
   },
   "scripts/check-license.mjs": {
     "mtime": 1783760611.9644783,
@@ -120,19 +120,19 @@
     "semantic_hash": "427bde96180f54072faf070537037969"
   },
   "src/collabHub/observeGuard.js": {
-    "mtime": 1783697004.0857205,
-    "ast_hash": "1c95aa51cc14f1c721c5e0d0db39554b",
-    "semantic_hash": "1c95aa51cc14f1c721c5e0d0db39554b"
+    "mtime": 1783951395.4023046,
+    "ast_hash": "69bee443c06e40615470cd109869d62e",
+    "semantic_hash": ""
   },
   "src/collabHub/publishClient.js": {
-    "mtime": 1783763755.2270908,
-    "ast_hash": "05d86c653a4879af7bda45137e3a5f4a",
-    "semantic_hash": "05d86c653a4879af7bda45137e3a5f4a"
+    "mtime": 1783951395.4025714,
+    "ast_hash": "6f3b23a1a30399fb60e6bb15f7b0fb56",
+    "semantic_hash": ""
   },
   "src/collabHub/socketClient.js": {
-    "mtime": 1783696982.4490001,
-    "ast_hash": "427e47c92fa82e185348e64e84cb12de",
-    "semantic_hash": "427e47c92fa82e185348e64e84cb12de"
+    "mtime": 1783951395.4027824,
+    "ast_hash": "ca711b9f8d6d687ebed1e4cc9fd84023",
+    "semantic_hash": ""
   },
   "src/control-room/controlRoomController.js": {
     "mtime": 1783768826.3209345,
@@ -150,9 +150,9 @@
     "semantic_hash": "a6687e6cc6435e11808ddf304a86b0a4"
   },
   "src/control-room/controlRoomPage.js": {
-    "mtime": 1783768846.244085,
-    "ast_hash": "0a59eac61ed17533e2aa1be7ac316736",
-    "semantic_hash": "0a59eac61ed17533e2aa1be7ac316736"
+    "mtime": 1783955716.8165853,
+    "ast_hash": "f38a011eb05a52795817f36403990b4f",
+    "semantic_hash": ""
   },
   "src/control-room/controlRoomState.js": {
     "mtime": 1783716067.2798727,
@@ -255,9 +255,9 @@
     "semantic_hash": "59159d470edd89f8750db6749cd12df2"
   },
   "src/publicPage.js": {
-    "mtime": 1783770087.8216147,
-    "ast_hash": "0c0aa71b1364a64add74688980ce442f",
-    "semantic_hash": "0c0aa71b1364a64add74688980ce442f"
+    "mtime": 1783951395.4035273,
+    "ast_hash": "f138eb920a7ddc79c51f50c236b49467",
+    "semantic_hash": ""
   },
   "src/server/controlRoomSession.js": {
     "mtime": 1783715994.3124833,
@@ -280,9 +280,9 @@
     "semantic_hash": "8f4697eadb8b674a5ec021a8ef237ab6"
   },
   "src/state/streamStatus.js": {
-    "mtime": 1783766650.0825286,
-    "ast_hash": "6e60adf5f29064706dc643a9135af3d6",
-    "semantic_hash": "6e60adf5f29064706dc643a9135af3d6"
+    "mtime": 1783951395.403858,
+    "ast_hash": "a09d01d69f27df1c843ea290b0c6c0b5",
+    "semantic_hash": ""
   },
   "src/ui/renderConnectionStatus.js": {
     "mtime": 1783697024.4056046,
@@ -298,11 +298,6 @@
     "mtime": 1783764567.2222157,
     "ast_hash": "add340562a6b98a7b73a0ba4971afc75",
     "semantic_hash": "add340562a6b98a7b73a0ba4971afc75"
-  },
-  "test/runTests.mjs": {
-    "mtime": 1783770193.2814133,
-    "ast_hash": "b287cd5407b6c68a4866173696a6cd80",
-    "semantic_hash": "b287cd5407b6c68a4866173696a6cd80"
   },
   "vercel.json": {
     "mtime": 1783713925.4323099,
@@ -458,5 +453,195 @@
     "mtime": 1783691534.2196448,
     "ast_hash": "19f14e8b810ca92c19d99a33fcaef128",
     "semantic_hash": "19f14e8b810ca92c19d99a33fcaef128"
+  },
+  "src/collabHub/config.js": {
+    "mtime": 1783951395.401875,
+    "ast_hash": "004309772ca590dde3eff5fee9428f70",
+    "semantic_hash": ""
+  },
+  "src/public/publicCollabHubRuntime.js": {
+    "mtime": 1783949823.5060332,
+    "ast_hash": "1438e7003ea44823a3941c610162ecc0",
+    "semantic_hash": ""
+  },
+  "src/public/publicContentRuntime.js": {
+    "mtime": 1783949823.5062222,
+    "ast_hash": "beb54ec532b953a755a6f95875bdd7ca",
+    "semantic_hash": ""
+  },
+  "src/public/publicDiagnosticsRuntime.js": {
+    "mtime": 1783949823.5063818,
+    "ast_hash": "f70d0c7219f6f3cd92d51aab0dbb3fd9",
+    "semantic_hash": ""
+  },
+  "src/public/publicListenerRuntime.js": {
+    "mtime": 1783949823.5065432,
+    "ast_hash": "962c0787631a3cc5c60296a8d2d6f54d",
+    "semantic_hash": ""
+  },
+  "src/public/publicStreamRuntime.js": {
+    "mtime": 1783949823.5066829,
+    "ast_hash": "ae3f6618d81b56bf739346f695f086b0",
+    "semantic_hash": ""
+  },
+  "test/audio/audio.test.mjs": {
+    "mtime": 1783951395.4041955,
+    "ast_hash": "81648746eccca86cf7c5f4e917b4a074",
+    "semantic_hash": ""
+  },
+  "test/collabHub/clients.test.mjs": {
+    "mtime": 1783951395.4044008,
+    "ast_hash": "548b23a3e620c0e29b4e762e4b3c6aab",
+    "semantic_hash": ""
+  },
+  "test/collabHub/collabHub.test.mjs": {
+    "mtime": 1783946495.2477913,
+    "ast_hash": "aa0b1b902855fc559f6c924034b5be04",
+    "semantic_hash": ""
+  },
+  "test/control-room/control-room.test.mjs": {
+    "mtime": 1783951395.4047644,
+    "ast_hash": "8116df139312e7f7f2f9d248e4247c82",
+    "semantic_hash": ""
+  },
+  "test/diagnostic/diagnostic.test.mjs": {
+    "mtime": 1783951395.405059,
+    "ast_hash": "3588c4fea7a2d503900527e829c0978b",
+    "semantic_hash": ""
+  },
+  "test/helpers/clock.mjs": {
+    "mtime": 1783946495.248826,
+    "ast_hash": "472a10a7b065c1bfe3dc2023545f98b9",
+    "semantic_hash": ""
+  },
+  "test/helpers/dom.mjs": {
+    "mtime": 1783946495.2490644,
+    "ast_hash": "a40b68383b76422eeddac346fb13e119",
+    "semantic_hash": ""
+  },
+  "test/helpers/flush.mjs": {
+    "mtime": 1783946495.2492788,
+    "ast_hash": "a6c9d63beaf7fb8af58f0f4fe13450f4",
+    "semantic_hash": ""
+  },
+  "test/helpers/listener-fakes.mjs": {
+    "mtime": 1783946495.2495785,
+    "ast_hash": "6c4b385905976a8eac38ad6411d6c46f",
+    "semantic_hash": ""
+  },
+  "test/helpers/publisher-fakes.mjs": {
+    "mtime": 1783946495.250171,
+    "ast_hash": "6fe2a2aa0df540b2157af0519840705b",
+    "semantic_hash": ""
+  },
+  "test/helpers/session-fixtures.mjs": {
+    "mtime": 1783946495.25031,
+    "ast_hash": "8fdbef07470c880ef3263c9df032e9be",
+    "semantic_hash": ""
+  },
+  "test/helpers/socket.mjs": {
+    "mtime": 1783946495.2504523,
+    "ast_hash": "7382ba425a77b4d1f8e552627e9dd773",
+    "semantic_hash": ""
+  },
+  "test/helpers/stream-fakes.mjs": {
+    "mtime": 1783946495.250581,
+    "ast_hash": "b6780bfeaeac8127972d023099088e39",
+    "semantic_hash": ""
+  },
+  "test/listener/listener.test.mjs": {
+    "mtime": 1783951395.4054081,
+    "ast_hash": "ba192cbf18aad527f25eacfb704f6426",
+    "semantic_hash": ""
+  },
+  "test/livekit/livekit.test.mjs": {
+    "mtime": 1783946495.2512295,
+    "ast_hash": "a6d2bf61301ebd2e99102b48c84cfbcb",
+    "semantic_hash": ""
+  },
+  "test/public/css-stub.mjs": {
+    "mtime": 1783949823.5071514,
+    "ast_hash": "6db4e3ae3759ebf8df3a20983e05ebf1",
+    "semantic_hash": ""
+  },
+  "test/public/publicPage.test.mjs": {
+    "mtime": 1783949823.5073035,
+    "ast_hash": "b26da1a88bd66a0c220cb0978aacaa04",
+    "semantic_hash": ""
+  },
+  "test/scripts/scripts.test.mjs": {
+    "mtime": 1783946495.251528,
+    "ast_hash": "c3ed62ba7878a221434325a52091300b",
+    "semantic_hash": ""
+  },
+  "test/server/server.test.mjs": {
+    "mtime": 1783946495.2518413,
+    "ast_hash": "cd7936b7262360f95b23f357a5232f11",
+    "semantic_hash": ""
+  },
+  "test/state/state.test.mjs": {
+    "mtime": 1783951395.4062722,
+    "ast_hash": "b3e3099053a8aa5e0126b0baff1b6ed4",
+    "semantic_hash": ""
+  },
+  "test/ui/ui.test.mjs": {
+    "mtime": 1783951395.4065166,
+    "ast_hash": "745cdcaa02a2213caabdd3955430d0c3",
+    "semantic_hash": ""
+  },
+  "docs/architecture/GRAPHIFY_README.md": {
+    "mtime": 1783941411.3563185,
+    "ast_hash": "477902d0b8e09a8ce510026be87b149e",
+    "semantic_hash": ""
+  },
+  "docs/architecture/collab-hub-contract.md": {
+    "mtime": 1783951395.4015613,
+    "ast_hash": "de83940b24a706c4856607069e0e3ab1",
+    "semantic_hash": ""
+  },
+  "docs/architecture/graphify-analysis.md": {
+    "mtime": 1783941424.190058,
+    "ast_hash": "1b1ce1aa22fb0f64ccbe13c7166d465d",
+    "semantic_hash": ""
+  },
+  "docs/architecture/graphify-regeneration.md": {
+    "mtime": 1783941437.3649173,
+    "ast_hash": "471821cd330c23b30d618ee2bfcd9f49",
+    "semantic_hash": ""
+  },
+  "src/server/http.js": {
+    "mtime": 1783952030.4668012,
+    "ast_hash": "df0cb82442cdbce44dc0e4b44bb4e740",
+    "semantic_hash": ""
+  },
+  "test/server/http.test.mjs": {
+    "mtime": 1783952030.4669871,
+    "ast_hash": "a6f705227f7249a08c6290f4ceb63b60",
+    "semantic_hash": ""
+  },
+  "src/control-room/collabHubPresenceRuntime.js": {
+    "mtime": 1783955716.8159726,
+    "ast_hash": "7e98de0901074da7cf10d5e8934a8e4f",
+    "semantic_hash": ""
+  },
+  "src/control-room/controlRoomDiagnostics.js": {
+    "mtime": 1783955716.816238,
+    "ast_hash": "ba86d5cd00a032268836d6a181adb96e",
+    "semantic_hash": ""
+  },
+  "src/control-room/controlRoomRuntime.js": {
+    "mtime": 1783955716.8168232,
+    "ast_hash": "c5efcfaf4078c8dff07503b10157b293",
+    "semantic_hash": ""
+  },
+  "src/control-room/meterLoop.js": {
+    "mtime": 1783955716.8170538,
+    "ast_hash": "c4eba3bd7c6e7a07588581b4f24035b1",
+    "semantic_hash": ""
+  },
+  "test/control-room/mount.test.mjs": {
+    "mtime": 1783955716.817339,
+    "ast_hash": "39fdf6c6e0d7b8b051abef579fcd20f3",
+    "semantic_hash": ""
   }
 }
