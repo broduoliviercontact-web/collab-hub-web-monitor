@@ -52,6 +52,7 @@ export function mountPublicPage(deps = {}) {
     mountDiag,
     mountListener,
     onError = (label, err) => console.error(label, err),
+    log = (...a) => console.log(...a),
   } = deps;
 
   // --- Configuration (centralisée via env) ---
@@ -74,7 +75,7 @@ export function mountPublicPage(deps = {}) {
   // cas où le bloc define est absent (ex. tests hors build) -> null -> affiché « — ».
   const runtimeConfig = buildRuntimeConfig({ env, build: buildInfo });
   // Logs de debug utiles (hotfix Lot 4G) : uniquement sous debug gated, jamais en console normale.
-  const dbg = (...a) => { if (debug) console.log('[CH public flux]', ...a); };
+  const dbg = (...a) => { if (debug) log('[CH public flux]', ...a); };
 
   // --- Refs DOM ---
   const els = {
@@ -99,7 +100,8 @@ export function mountPublicPage(deps = {}) {
   let lastLocalRestore = restored ? restored.updatedAt : null;
 
   // --- État technique de fraîcheur (Lot 3B) ---
-  const freshness = createFreshnessState();
+  // `now` injecté (défaut Date.now) -> testable en Node sans horloge réelle.
+  const freshness = createFreshnessState({ now });
   if (restored && restored.updatedAt) {
     const ms = new Date(restored.updatedAt).getTime();
     if (Number.isFinite(ms)) freshness.restoreContent(ms);
