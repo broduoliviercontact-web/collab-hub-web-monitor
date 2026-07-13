@@ -12,17 +12,16 @@
 
 import './styles/main.css';
 import { connectCollabHub } from './collabHub/socketClient.js';
-import { routeControl, KNOWN_HEADERS, HEARTBEAT_HEADER, STREAM_HEADERS } from './collabHub/messageRouter.js';
+import { routeControl, KNOWN_HEADERS, HEARTBEAT_HEADER } from './collabHub/messageRouter.js';
 import { createSoundState, DEFAULTS } from './state/soundState.js';
 import { renderField, flashElement, fieldElementKey } from './ui/renderSoundInfo.js';
 import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
 import { loadSoundState, saveSoundState, clearSoundState } from './state/persist.js';
 import { createFreshnessState, computePublicStatus } from './state/freshness.js';
-import { createStreamStatus, routeStreamControl } from './state/streamStatus.js';
-import { renderStreamStatus, mountStreamCard } from './ui/streamStatusView.js';
 import { buildRuntimeConfig } from './diagnostic/runtimeConfig.js';
 import { createDiagnosticsRuntime } from './public/publicDiagnosticsRuntime.js';
 import { createListenerRuntime } from './public/publicListenerRuntime.js';
+import { createStreamRuntime } from './public/publicStreamRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
 // n'affecte pas le code-splitting. Les chargeurs dynamiques (diag/listener) sont
@@ -114,25 +113,13 @@ export function mountPublicPage(deps = {}) {
 
   // --- État de flux direct (Lot 4G) : statut public AVANT connexion LiveKit ---
   // La logique métier (streamStatus, observation des headers stream_*, routage,
-  // diagnostic) reste active si LiveKit activé. La CARTE publique n'est montée
-  // qu'en mode debug (?debug=1) — hors debug, « ÉCOUTER LE DIRECT » reste
-  // l'entrée principale et aucun DOM de flux n'est créé.
-  let streamStatus = null;
-  let streamEls = null;
-  let streamAnchor = els.card;
-  // Lot 5 (partie B) : le span de compteur d'auditeurs (dans la section listener,
-  // montée async) est détenu par le runtime listener. Mis à jour depuis streamStatus
-  // uniquement quand le libellé change (aria-live polite -> pas de réannonce à
-  // chaque tick).
-  let lastListenerCountLabel = null;
-  if (LIVEKIT_ENABLED) {
-    streamStatus = createStreamStatus({ now });
-    const mounted = mountStreamCard(doc, els.card, { debug, livekitEnabled: LIVEKIT_ENABLED, streamStatus });
-    if (mounted) {
-      streamEls = mounted.els;
-      streamAnchor = mounted.section; // la section listener se monte APRÈS ce bloc
-    }
-  }
+  // carte de flux + mini VU, compteur d'auditeurs, fraîcheur stale/fresh, snapshot
+  // diag) est extraite dans publicStreamRuntime (issue #7). `getCountEl` injecté
+  // (span détenu par le runtime listener) — aucun couplage direct listener/stream.
+  const stream = createStreamRuntime({
+    doc, card: els.card, enabled: LIVEKIT_ENABLED, debug, now,
+    getCountEl: () => listener.getCountEl(), dbg,
+  });
 
   let connStatus = null;
   let lastPublicStatus = null;
@@ -155,21 +142,8 @@ export function mountPublicPage(deps = {}) {
     }
   }
 
-  // Rend le statut de flux (Lot 4G) + le compteur d'auditeurs (Lot 5). Appelé à
-  // chaque header de flux reçu et à chaque tick 1 s (pour rafraîchir la fraîcheur :
-  // un état peut devenir STALE sans nouveau header -> STATUT INDISPONIBLE /
-  // « Auditeurs : — »). Le compteur est mis à jour seulement si le libellé change
-  // (discrétion aria-live : on ne réécrit pas le même texte à chaque tick).
-  function renderStreamState() {
-    if (!streamStatus) return;
-    const snap = streamStatus.getSnapshot();
-    if (streamEls) renderStreamStatus(snap, streamEls);
-    const streamCountEl = listener.getCountEl();
-    if (streamCountEl && snap.listenerCountLabel !== lastListenerCountLabel) {
-      streamCountEl.textContent = snap.listenerCountLabel;
-      lastListenerCountLabel = snap.listenerCountLabel;
-    }
-  }
+  // Rend le statut de flux + le compteur d'auditeurs (délégué au runtime stream).
+  const renderStreamState = () => stream.render();
 
   const intervalHandle = schedule(() => {
     recomputePublicState();
@@ -181,20 +155,11 @@ export function mountPublicPage(deps = {}) {
     }
   }, 1000);
 
-  // Observe les headers de flux (Lot 4G) après (re)connexion. Idempotent via le
-  // guard de socketClient (réémis une fois par socket.id après vrai disconnect).
-  function observeStreamHeaders() {
-    if (!collabApi || !streamStatus) return;
-    for (const h of STREAM_HEADERS) {
-      try { const ok = collabApi.observeHeaderOnce(h); if (ok) dbg('observe stream header', h); } catch { /* guard idempotent */ }
-    }
-  }
-
   function handleControl(data) {
     // Lot 4G : headers de flux direct (avant tout routeControl, qui n'accepte
-    // que les 5 contenus). Aucun secret transporté.
-    if (streamStatus && data && STREAM_HEADERS.includes(data.header)) {
-      routeStreamControl(data, streamStatus);
+    // que les 5 contenus). Aucun secret transporté. Routage + rendu délégués au
+    // runtime stream ; seul l'orchestration (fraîcheur, diag) reste ici.
+    if (stream.ingest(data)) {
       dbg('received stream control', data.header, data.values);
       renderStreamState();
       recomputePublicState();
@@ -229,25 +194,21 @@ export function mountPublicPage(deps = {}) {
     connStatus = status;
     freshness.setServerStatus(status);
     recomputePublicState();
-    if (status === 'connected') { dbg('socket connected -> observe stream headers'); observeStreamHeaders(); } // (re)connexion -> réobserve
+    if (status === 'connected') { dbg('socket connected -> observe stream headers'); stream.observeHeaders(collabApi); } // (re)connexion -> réobserve
     diag.setStatus(status);
   }
 
   connect({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE, onControl: handleControl, onStatus: handleStatus })
     .then((api) => {
       collabApi = api;
-      observeStreamHeaders(); // 1re connexion (si déjà connectée, guard idempotent)
+      stream.observeHeaders(api); // 1re connexion (si déjà connectée, guard idempotent)
       const diagOpts = {
         initialRestore: lastLocalRestore,
         initialSaved: lastSavedAt,
         runtimeConfig,
         clear: () => { const ok = clearSoundState(storage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
         livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listener.getApi() ? listener.getApi().getSnapshot() : null }),
-        streamDiag: () => streamStatus ? {
-          ...streamStatus.getSnapshot(),
-          ...streamStatus.getDiagnostics(),
-          observedStreamHeaders: collabApi ? STREAM_HEADERS.filter((h) => collabApi.isObserved(h)) : [],
-        } : null,
+        streamDiag: () => stream.diagSnapshot(collabApi),
       };
       // Montage diag gated par `debug` à l'intérieur du runtime (issue #7).
       diag.mount(api, diagOpts, mountDiag).then(() => {
@@ -261,7 +222,7 @@ export function mountPublicPage(deps = {}) {
     // Monte la section listener (import dynamique gate par enabled dans le runtime).
     // Après montage, le span de compteur d'auditeurs est disponible -> rafraîchit
     // immédiatement le libellé.
-    listener.mount(streamAnchor).then(() => { renderStreamState(); });
+    listener.mount(stream.getAnchor()).then(() => { renderStreamState(); });
   }
 
   recomputePublicState();
