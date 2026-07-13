@@ -20,9 +20,9 @@ import { loadSoundState, saveSoundState, clearSoundState } from './state/persist
 import { createFreshnessState, computePublicStatus } from './state/freshness.js';
 import { createStreamStatus, routeStreamControl } from './state/streamStatus.js';
 import { renderStreamStatus, mountStreamCard } from './ui/streamStatusView.js';
-import { isLiveKitEnabled } from './listener/listenerUI.js';
 import { buildRuntimeConfig } from './diagnostic/runtimeConfig.js';
 import { createDiagnosticsRuntime } from './public/publicDiagnosticsRuntime.js';
+import { createListenerRuntime } from './public/publicListenerRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
 // n'affecte pas le code-splitting. Les chargeurs dynamiques (diag/listener) sont
@@ -66,7 +66,9 @@ export function mountPublicPage(deps = {}) {
   // Lot 4D : section d'écoute LiveKit. true -> active ; false/absent -> masquée ;
   // valeur inconnue -> false + warning (isLiveKitEnabled). L'import du SDK LiveKit
   // est dynamique et gate par ce flag -> aucun chargement si désactivé.
-  const LIVEKIT_ENABLED = isLiveKitEnabled(env.VITE_LIVEKIT_ENABLED);
+  // Gate + montage listener + destroy extraits dans publicListenerRuntime (issue #7).
+  const listener = createListenerRuntime({ env, doc, mountListener, onError });
+  const LIVEKIT_ENABLED = listener.enabled;
   // Lot Ops Debug §1 : le panneau d'exploitation ne se monte QUE si ?debug=1 ET
   // la variable build publique VITE_PUBLIC_DEBUG_ENABLED vaut exactement 'true'.
   // En production (variable false) -> /?debug=1 monte AUCUN panneau (sécurité).
@@ -118,10 +120,10 @@ export function mountPublicPage(deps = {}) {
   let streamStatus = null;
   let streamEls = null;
   let streamAnchor = els.card;
-  // Lot 5 (partie B) : span de compteur d'auditeurs (dans la section listener,
-  // montée async). Mis à jour depuis streamStatus uniquement quand le libellé
-  // change (aria-live polite -> pas de réannonce à chaque tick).
-  let streamCountEl = null;
+  // Lot 5 (partie B) : le span de compteur d'auditeurs (dans la section listener,
+  // montée async) est détenu par le runtime listener. Mis à jour depuis streamStatus
+  // uniquement quand le libellé change (aria-live polite -> pas de réannonce à
+  // chaque tick).
   let lastListenerCountLabel = null;
   if (LIVEKIT_ENABLED) {
     streamStatus = createStreamStatus({ now });
@@ -136,7 +138,6 @@ export function mountPublicPage(deps = {}) {
   let lastPublicStatus = null;
   let lastFresh = null;
 
-  let listenerApi = null;
   let collabApi = null;
 
   function recomputePublicState() {
@@ -163,6 +164,7 @@ export function mountPublicPage(deps = {}) {
     if (!streamStatus) return;
     const snap = streamStatus.getSnapshot();
     if (streamEls) renderStreamStatus(snap, streamEls);
+    const streamCountEl = listener.getCountEl();
     if (streamCountEl && snap.listenerCountLabel !== lastListenerCountLabel) {
       streamCountEl.textContent = snap.listenerCountLabel;
       lastListenerCountLabel = snap.listenerCountLabel;
@@ -240,7 +242,7 @@ export function mountPublicPage(deps = {}) {
         initialSaved: lastSavedAt,
         runtimeConfig,
         clear: () => { const ok = clearSoundState(storage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
-        livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listenerApi ? listenerApi.getSnapshot() : null }),
+        livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listener.getApi() ? listener.getApi().getSnapshot() : null }),
         streamDiag: () => streamStatus ? {
           ...streamStatus.getSnapshot(),
           ...streamStatus.getDiagnostics(),
@@ -256,16 +258,10 @@ export function mountPublicPage(deps = {}) {
     .catch((err) => onError('[Collab-Hub] connexion impossible :', err));
 
   if (LIVEKIT_ENABLED) {
-    // mountListener (défaut = import dynamique littéral) gated par LIVEKIT_ENABLED.
-    mountListener({ mountAfter: streamAnchor })
-      .then((api) => {
-        listenerApi = api;
-        // Lot 5 : récupère le span de compteur d'auditeurs après montage de la
-        // section listener, puis rafraîchit immédiatement le libellé.
-        streamCountEl = doc.getElementById('lk-listener-count');
-        renderStreamState();
-      })
-      .catch((e) => onError('[LiveKit] section listener indisponible :', e));
+    // Monte la section listener (import dynamique gate par enabled dans le runtime).
+    // Après montage, le span de compteur d'auditeurs est disponible -> rafraîchit
+    // immédiatement le libellé.
+    listener.mount(streamAnchor).then(() => { renderStreamState(); });
   }
 
   recomputePublicState();
@@ -278,7 +274,7 @@ export function mountPublicPage(deps = {}) {
     if (tornDown) return;
     tornDown = true;
     if (intervalHandle !== undefined && intervalHandle !== null) clearSchedule(intervalHandle);
-    try { if (listenerApi && listenerApi.destroy) listenerApi.destroy(); } catch { /* listener déjà détruit */ }
+    listener.destroy();
     try { if (collabApi && collabApi.socket && typeof collabApi.socket.close === 'function') collabApi.socket.close(); } catch { /* socket déjà fermée */ }
   }
 
