@@ -20,3 +20,18 @@ export function resolveCollabHubConfig({ env, usernamePrefix = 'CH-Web' }) {
   const username = `${usernamePrefix}_${Math.floor(Math.random() * 1000)}`;
   return { serverUrl, namespace, authMode, username };
 }
+
+// Options Socket.IO partagées par les deux clients (observer public + publisher
+// Control Room). Auparavant dupliquées verbatim. Mêmes valeurs : transport
+// websocket uniquement, reconnexion auto activée (backoff 1 s -> 5 s max), auth
+// + query username. Aucun changement de comportement réseau.
+export function buildSocketOptions({ auth, username }) {
+  return {
+    auth,
+    query: { username },
+    transports: ['websocket'],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+  };
+}

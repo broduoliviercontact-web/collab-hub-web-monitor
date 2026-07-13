@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 import { KNOWN_HEADERS, OBSERVABLE_HEADERS } from './messageRouter.js';
 import { createObserveGuard, wireSocket } from './observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from './authMode.js';
+import { buildSocketOptions } from './config.js';
 
 export async function connectCollabHub({
   serverUrl, namespace, username, authMode, onControl, onStatus,
@@ -18,14 +19,7 @@ export async function connectCollabHub({
   // guest : tente le token, retombe sur l'anonyme en cas d'échec.
   const auth = await resolveAuth({ serverUrl, username, authMode: mode });
 
-  const socket = ioFactory(base, {
-    auth,
-    query: { username },
-    transports: ['websocket'],
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-  });
+  const socket = ioFactory(base, buildSocketOptions({ auth, username }));
 
   // Observation idempotente : un header émis une seule fois par socket.id.
   // Voir observeGuard.js. L'état affiché n'est pas effacé -> pas de perte de
