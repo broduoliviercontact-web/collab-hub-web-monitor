@@ -789,17 +789,93 @@ test('streamStatus : compteur négatif -> "Auditeurs : —"', () => {
   assert.equal(s.getSnapshot().listenerCountLabel, 'Auditeurs : —');
 });
 
-// 17. streamStatus : stale -> "Auditeurs : —" (snapshot listenerCount null)
+// 17. streamStatus : stale -> CONSERVE le dernier compte (issue #1).
+// Le header stream_listener_count est publié sur les changements de participants
+// (event-driven, pas à chaque tick VU). Un gate STALE_MS ferait revenir le
+// compteur à "Auditeurs : —" entre deux publications — notamment pendant un
+// réglage de volume de plusieurs secondes (le tick 1 s repeint '—'). Issue #1 :
+// le compteur doit conserver son dernier état connu ; "Auditeurs : —" seulement
+// si aucun compte valide n'a jamais été reçu (ou si la dernière valeur reçue
+// était invalide).
 
-test('streamStatus : compteur stale -> "Auditeurs : —" et listenerCount null', () => {
+test('streamStatus : compteur stale -> conserve le dernier compte (ne revient pas à —)', () => {
   const c = makeClock(1000);
   const s = createStreamStatus({ now: c.now });
   routeStreamControl({ header: 'stream_listener_count', values: [2] }, s);
-  c.advance(STALE_MS + 1); // > 3 s sans nouveau header
+  c.advance(STALE_MS + 1); // > 3 s sans nouveau header (ex : pendant réglage volume)
+  const snap = s.getSnapshot();
+  assert.equal(snap.listenerCountKnown, true, 'known persiste après stale');
+  assert.equal(snap.listenerCount, 2, 'count persiste après stale');
+  assert.equal(snap.listenerCountLabel, '2 auditeurs', 'label persiste (ne revient pas à —)');
+});
+
+// 17b. issue #1 : variants du compteur qui doivent toutes persister après stale.
+
+test('issue #1 : compteur 0 stale -> conserve "0 auditeur"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [0] }, s);
+  c.advance(STALE_MS + 1);
+  assert.equal(s.getSnapshot().listenerCountLabel, '0 auditeur');
+});
+
+test('issue #1 : compteur 1 stale -> conserve "1 auditeur"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [1] }, s);
+  c.advance(STALE_MS + 1);
+  assert.equal(s.getSnapshot().listenerCountLabel, '1 auditeur');
+});
+
+test('issue #1 : compteur pluriel stale -> conserve "12 auditeurs"', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [12] }, s);
+  c.advance(STALE_MS + 1);
+  assert.equal(s.getSnapshot().listenerCountLabel, '12 auditeurs');
+});
+
+test('issue #1 : compteur jamais reçu -> reste "Auditeurs : —" (même après stale)', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  c.advance(STALE_MS + 1);
   const snap = s.getSnapshot();
   assert.equal(snap.listenerCountKnown, false);
-  assert.equal(snap.listenerCount, null);
   assert.equal(snap.listenerCountLabel, 'Auditeurs : —');
+});
+
+test('issue #1 : le compteur se met à jour quand un nouveau nombre arrive (même après stale)', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [2] }, s);
+  c.advance(STALE_MS + 1);
+  assert.equal(s.getSnapshot().listenerCountLabel, '2 auditeurs');
+  c.advance(1);
+  routeStreamControl({ header: 'stream_listener_count', values: [5] }, s);
+  assert.equal(s.getSnapshot().listenerCountLabel, '5 auditeurs');
+});
+
+test('issue #1 : valeur invalide reçue -> "Auditeurs : —" (réinitialise le compte connu)', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [2] }, s);
+  assert.equal(s.getSnapshot().listenerCountLabel, '2 auditeurs');
+  // La Control Room envoie explicitement une valeur inexploitable -> inconnu.
+  routeStreamControl({ header: 'stream_listener_count', values: ['abc'] }, s);
+  const snap = s.getSnapshot();
+  assert.equal(snap.listenerCountKnown, false);
+  assert.equal(snap.listenerCountLabel, 'Auditeurs : —');
+});
+
+test('issue #1 : diagnostics compteur stale -> conserve (cohérent avec affichage public)', () => {
+  const c = makeClock(1000);
+  const s = createStreamStatus({ now: c.now });
+  routeStreamControl({ header: 'stream_listener_count', values: [2] }, s);
+  c.advance(STALE_MS + 1);
+  const d = s.getDiagnostics();
+  assert.equal(d.listenerCount, 2, 'diagnostic count persiste');
+  assert.equal(d.listenerCountKnown, true, 'diagnostic known persiste');
+  assert.equal(d.listenerCountLabel, '2 auditeurs', 'diagnostic label persiste');
 });
 
 // 18. streamStatus : jamais reçu -> "Auditeurs : —"

@@ -17,6 +17,7 @@ import { register } from 'node:module';
 import { KNOWN_HEADERS, STREAM_HEADERS } from '../../src/collabHub/messageRouter.js';
 import { STORAGE_KEY } from '../../src/state/persist.js';
 import { DEFAULTS } from '../../src/state/soundState.js';
+import { STALE_MS } from '../../src/state/streamStatus.js';
 
 // Stub des imports .css (publicPage.js -> styles/main.css) sous node:test.
 // register() s'exécute avant l'import dynamique de publicPage.js (les imports
@@ -214,6 +215,36 @@ test('7. compteur dauditeurs : stream_listener_count -> libellé rendu dans lk-l
   conn.getOpts().onControl({ header: 'stream_listener_count', values: 5 });
   // formatListenerCount(5) = "5 auditeurs" ; rendu seulement si le libellé change.
   assert.equal(doc.getElementById('lk-listener-count').textContent, '5 auditeurs');
+  r.teardown();
+});
+
+// 7b. issue #1 : le compteur d'auditeurs CONSERVE son dernier état connu et ne
+// revient pas à "Auditeurs : —" après stale. Le header stream_listener_count est
+// publié sur les changements de participants (event-driven, pas à chaque tick) ;
+// entre deux publications, le tick 1 s (renderStreamState -> stream.render)
+// réévaluait le gate STALE_MS et repeignait "Auditeurs : —" — c'est ce que
+// l'utilisateur observe comme disparition du compteur pendant qu'il règle le
+// volume (plusieurs secondes). Reproduction : on affiche un compte connu, on
+// avance l'horloge au-delà de STALE_MS (le temps qui s'écoule pendant le réglage
+// volume), on déclenche le tick 1 s, et on exige que le compteur reste visible.
+// Ce test ÉCHOUE avant le correctif (le tick repeint "—") et passe après.
+
+test('7b. issue #1 : compteur conservé après stale + tick 1 s (ne revient pas à —)', async () => {
+  let t = 1_000_000;
+  const now = () => t;
+  const { conn, doc, sched, r } = mount({ now });
+  await flush();
+  conn.getOpts().onControl({ header: 'stream_listener_count', values: 2 });
+  assert.equal(doc.getElementById('lk-listener-count').textContent, '2 auditeurs', 'compte initial rendu');
+  // > 3 s s'écoulent sans nouveau header (ex : l'utilisateur règle le volume).
+  t = 1_000_000 + STALE_MS + 500;
+  // Le tick 1 s déclenche renderStreamState() -> stream.render() réévalue le label.
+  sched.tick();
+  assert.equal(doc.getElementById('lk-listener-count').textContent, '2 auditeurs', 'compte conservé après stale + tick');
+  // Un nouveau nombre arrive -> le compteur se met à jour.
+  t = 1_000_000 + STALE_MS + 600;
+  conn.getOpts().onControl({ header: 'stream_listener_count', values: 7 });
+  assert.equal(doc.getElementById('lk-listener-count').textContent, '7 auditeurs', 'mise à jour sur nouveau compte');
   r.teardown();
 });
 
