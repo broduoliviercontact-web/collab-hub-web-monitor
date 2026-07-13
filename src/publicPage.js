@@ -12,6 +12,7 @@
 
 import './styles/main.css';
 import { connectCollabHub } from './collabHub/socketClient.js';
+import { resolveCollabHubConfig } from './collabHub/config.js';
 import { renderConnectionStatus } from './ui/renderConnectionStatus.js';
 import { computePublicStatus } from './state/freshness.js';
 import { buildRuntimeConfig } from './diagnostic/runtimeConfig.js';
@@ -56,10 +57,9 @@ export function mountPublicPage(deps = {}) {
   } = deps;
 
   // --- Configuration (centralisée via env) ---
-  const SERVER_URL = (env.VITE_COLLAB_HUB_URL || 'https://server.collab-hub.io').replace(/\/+$/, '');
-  const NAMESPACE = (env.VITE_COLLAB_HUB_NAMESPACE ?? '').replace(/^\/+|\/+$/g, '');
-  const AUTH_MODE = env.VITE_COLLAB_HUB_AUTH_MODE;
-  const USERNAME = `CH-Web_${Math.floor(Math.random() * 1000)}`;
+  // Issue #9 : analyse URL/namespace/auth/username extraite dans collabHub/config.js
+  // (source unique partagée avec la Control Room). Préfixe CH-Web (page publique).
+  const { serverUrl: SERVER_URL, namespace: NAMESPACE, authMode: AUTH_MODE, username: USERNAME } = resolveCollabHubConfig({ env });
   // Lot 4D : section d'écoute LiveKit. true -> active ; false/absent -> masquée ;
   // valeur inconnue -> false + warning (isLiveKitEnabled). L'import du SDK LiveKit
   // est dynamique et gate par ce flag -> aucun chargement si désactivé.
