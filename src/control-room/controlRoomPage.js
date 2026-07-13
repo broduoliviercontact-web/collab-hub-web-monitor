@@ -20,6 +20,7 @@ import { Room, LocalAudioTrack, Track, AudioPresets } from '../livekit/livekitBr
 import { createControlRoomController } from './controlRoomController.js';
 import { createStreamPresencePublisher } from './streamPresencePublisher.js';
 import { connectCollabHubPublisher } from '../collabHub/publishClient.js';
+import { resolveCollabHubConfig } from '../collabHub/config.js';
 import {
   buildControlRoomDOM,
   renderControlRoom,
@@ -56,8 +57,11 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
   // publique). Aucun secret (valeurs publiques : onair, level, peak, timestamp).
   // emitterRef mutable : l'emitter est branché quand la connexion résout ; avant,
   // le publisher no-op (publication désactivée propre, le reste fonctionne).
-  const CH_SERVER_URL = (import.meta.env.VITE_COLLAB_HUB_URL || 'https://server.collab-hub.io').replace(/\/+$/, '');
-  const CH_NAMESPACE = (import.meta.env.VITE_COLLAB_HUB_NAMESPACE ?? '').replace(/^\/+|\/+$/g, '');
+  // Issue #9 : configuration Collab-Hub centralisée dans collabHub/config.js
+  // (source unique partagée avec la page publique). Préfixe CH-CR (Control Room).
+  // Le publisher reste en auth anonyme (pas d'authMode passé) : il publie des
+  // headers de présence flux publics, aucun token guest nécessaire.
+  const chCfg = resolveCollabHubConfig({ env: import.meta.env, usernamePrefix: 'CH-CR' });
   let streamConn = null;                       // connexion Collab-Hub (pour destroy)
   const emitterRef = { current: null };       // {publish} branché à la connexion
   const streamEmitter = {
@@ -68,9 +72,9 @@ export function mountControlRoom({ onLogout, onSessionExpired } = {}) {
   };
   const streamPublisher = createStreamPresencePublisher({ now: Date.now, emitter: streamEmitter });
   connectCollabHubPublisher({
-    serverUrl: CH_SERVER_URL,
-    namespace: CH_NAMESPACE,
-    username: `CH-CR_${Math.floor(Math.random() * 1000)}`,
+    serverUrl: chCfg.serverUrl,
+    namespace: chCfg.namespace,
+    username: chCfg.username,
     debug,
   })
     .then((c) => { streamConn = c; emitterRef.current = { publish: c.publish }; })

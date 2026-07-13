@@ -26,6 +26,7 @@
 
 import { io } from 'socket.io-client';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from './authMode.js';
+import { buildSocketOptions } from './config.js';
 import { STREAM_HEADERS } from './messageRouter.js';
 
 // Délai prudent entre le publish d'enregistrement (register, 1er -> pas de push)
@@ -65,14 +66,7 @@ export async function connectCollabHubPublisher({
 
   const dbg = (...a) => { if (debug) console.log('[CH publisher]', ...a); };
 
-  const socket = ioFactory(base, {
-    auth,
-    query: { username },
-    transports: ['websocket'],
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-  });
+  const socket = ioFactory(base, buildSocketOptions({ auth, username }));
 
   function emitControl(header, values) {
     try {

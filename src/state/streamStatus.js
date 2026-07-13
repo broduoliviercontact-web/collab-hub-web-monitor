@@ -10,9 +10,10 @@
 
 // Headers Collab-Hub publiés par la Control Room (Lot 4G). Publics, sans secret.
 // Source de vérité unique : src/collabHub/messageRouter.js (réutilisée par le
-// routeur de flux et l'observation côté page publique).
+// routeur de flux et l'observation côté page publique). Issue #9 : le re-export
+// de STREAM_HEADERS a été retiré — les appelants importent directement depuis
+// messageRouter.js, qui reste l'unique point d'export des headers.
 import { STREAM_HEADERS } from '../collabHub/messageRouter.js';
-export { STREAM_HEADERS };
 
 // Seuils explicites et testables.
 export const STALE_MS = 3000;        // > 3 s sans mise à jour -> INDISPONIBLE

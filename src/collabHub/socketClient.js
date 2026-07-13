@@ -5,8 +5,13 @@ import { io } from 'socket.io-client';
 import { KNOWN_HEADERS, OBSERVABLE_HEADERS } from './messageRouter.js';
 import { createObserveGuard, wireSocket } from './observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from './authMode.js';
+import { buildSocketOptions } from './config.js';
 
-export async function connectCollabHub({ serverUrl, namespace, username, authMode, onControl, onStatus }) {
+export async function connectCollabHub({
+  serverUrl, namespace, username, authMode, onControl, onStatus,
+  // Injectable pour les tests (aucun effet en production) :
+  ioFactory = io,
+} = {}) {
   const mode = resolveAuthMode(authMode);
   const base = buildSocketUrl(serverUrl, namespace);
 
@@ -14,14 +19,7 @@ export async function connectCollabHub({ serverUrl, namespace, username, authMod
   // guest : tente le token, retombe sur l'anonyme en cas d'échec.
   const auth = await resolveAuth({ serverUrl, username, authMode: mode });
 
-  const socket = io(base, {
-    auth,
-    query: { username },
-    transports: ['websocket'],
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-  });
+  const socket = ioFactory(base, buildSocketOptions({ auth, username }));
 
   // Observation idempotente : un header émis une seule fois par socket.id.
   // Voir observeGuard.js. L'état affiché n'est pas effacé -> pas de perte de
@@ -37,5 +35,16 @@ export async function connectCollabHub({ serverUrl, namespace, username, authMod
     isObserved: guard.isObserved,
     observedCount: guard.observedCount,
     forget: guard.forget,
+    // Snapshot diagnostic homogène avec connectCollabHubPublisher.getDiagnostics()
+    // (issue #9) : champs communs connected + socketId + headers observés. Aucun
+    // secret (headers publics uniquement).
+    getDiagnostics() {
+      return {
+        connected: socket.connected,
+        socketId: socket.id || null,
+        observedHeaders: guard.observedHeaders(),
+        observedCount: guard.observedCount(),
+      };
+    },
   };
 }

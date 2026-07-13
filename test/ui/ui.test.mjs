@@ -6,11 +6,12 @@ import assert from 'node:assert/strict';
 import { renderField, isSafeHttpUrl, parseSoundLink } from '../../src/ui/renderSoundInfo.js';
 import {
   createStreamStatus, routeStreamControl,
-  STREAM_HEADERS, STALE_MS, SIGNAL_THRESHOLD,
+  STALE_MS, SIGNAL_THRESHOLD,
   STREAM_STATUS, STREAM_SIGNAL,
   clamp01, parseOnAir, parseTimestamp,
   normalizeCount, formatListenerCount,
 } from '../../src/state/streamStatus.js';
+import { STREAM_HEADERS } from '../../src/collabHub/messageRouter.js';
 import {
   buildStreamStatusDOM, renderStreamStatus,
   mountStreamCard, shouldMountStreamCard,

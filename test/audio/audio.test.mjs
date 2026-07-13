@@ -16,11 +16,12 @@ import { requestLiveKitToken, TOKEN_ERRORS } from '../../src/livekit/tokenClient
 import { createLiveKitPublisher, PUBLISHER_ERRORS } from '../../src/audio/livekitPublisher.js';
 import {
   createStreamStatus, routeStreamControl,
-  STREAM_HEADERS, STALE_MS, SIGNAL_THRESHOLD,
+  STALE_MS, SIGNAL_THRESHOLD,
   STREAM_STATUS, STREAM_SIGNAL,
   clamp01, parseOnAir, parseTimestamp,
   normalizeCount, formatListenerCount,
 } from '../../src/state/streamStatus.js';
+import { STREAM_HEADERS } from '../../src/collabHub/messageRouter.js';
 import { countLiveListeners, LISTENER_IDENTITY_PREFIX } from '../../src/audio/listenerCount.js';
 import { makeFakeOutputStream, makeFakeMediaTrack } from '../helpers/publisher-fakes.mjs';
 

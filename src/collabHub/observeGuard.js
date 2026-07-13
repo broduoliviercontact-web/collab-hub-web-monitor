@@ -28,6 +28,7 @@ export function createObserveGuard({ emit }) {
     forget(header) { observed.delete(header); },
     isObserved: (h) => observed.has(h),
     observedCount: () => observed.size,
+    observedHeaders: () => [...observed],
     reset() { observed.clear(); },
   };
 }

@@ -10,11 +10,12 @@ import {
 } from '../../src/listener/listenerUI.js';
 import {
   createStreamStatus, routeStreamControl,
-  STREAM_HEADERS, STALE_MS, SIGNAL_THRESHOLD,
+  STALE_MS, SIGNAL_THRESHOLD,
   STREAM_STATUS, STREAM_SIGNAL,
   clamp01, parseOnAir, parseTimestamp,
   normalizeCount, formatListenerCount,
 } from '../../src/state/streamStatus.js';
+import { STREAM_HEADERS } from '../../src/collabHub/messageRouter.js';
 import { makeFakeRemoteTrack, makeFakeAudioSink, makeFakeListenerRoomSubscribedPub, makeListener, makeFakeListenerTokenClient, makeFakeListenerRoomClass } from '../helpers/listener-fakes.mjs';
 import { fakeDocument, fakeDomEl } from '../helpers/dom.mjs';
 import { flush } from '../helpers/flush.mjs';
