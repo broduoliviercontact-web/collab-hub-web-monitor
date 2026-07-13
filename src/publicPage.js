@@ -19,6 +19,7 @@ import { createDiagnosticsRuntime } from './public/publicDiagnosticsRuntime.js';
 import { createListenerRuntime } from './public/publicListenerRuntime.js';
 import { createStreamRuntime } from './public/publicStreamRuntime.js';
 import { createContentRuntime } from './public/publicContentRuntime.js';
+import { createCollabHubRuntime } from './public/publicCollabHubRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
 // n'affecte pas le code-splitting. Les chargeurs dynamiques (diag/listener) sont
@@ -111,13 +112,14 @@ export function mountPublicPage(deps = {}) {
     getCountEl: () => listener.getCountEl(), dbg,
   });
 
-  let connStatus = null;
   let lastPublicStatus = null;
   let lastFresh = null;
 
-  let collabApi = null;
-
+  // Statut public : pont entre le statut de connexion Collab-Hub et la fraîcheur
+  // contenu -> rendu du statut + attribut data-content-fresh. Appelé à chaque
+  // (re)connexion, contrôle, et tick 1 s.
   function recomputePublicState() {
+    const connStatus = collab.getConnStatus();
     if (connStatus !== null) {
       const pub = computePublicStatus(connStatus, freshness.isMaxActive());
       if (pub !== lastPublicStatus) {
@@ -135,6 +137,31 @@ export function mountPublicPage(deps = {}) {
   // Rend le statut de flux + le compteur d'auditeurs (délégué au runtime stream).
   const renderStreamState = () => stream.render();
 
+  // Runtime Collab-Hub (issue #7) : connexion socket + dispatch de routage
+  // (handleControl/handleStatus internes) + observation des headers de flux après
+  // (re)connexion + suivi du statut. recomputePublicState/renderStreamState/onConnected
+  // referont le pont vers le reste (statut public, montage diag).
+  const collab = createCollabHubRuntime({
+    connect, serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE,
+    stream, content, diag, dbg,
+    recomputePublicState, renderStreamState, onError,
+    onConnected: (api) => {
+      const diagOpts = {
+        initialRestore: content.getInitialRestore(),
+        initialSaved: content.getInitialSavedAt(),
+        runtimeConfig,
+        clear: () => content.clear(),
+        livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listener.getApi() ? listener.getApi().getSnapshot() : null }),
+        streamDiag: () => stream.diagSnapshot(collab.getApi()),
+      };
+      // Montage diag gated par `debug` à l'intérieur du runtime diag (issue #7).
+      diag.mount(api, diagOpts, mountDiag).then(() => {
+        diag.refreshFreshness(content.freshness);
+        diag.refreshStream();
+      });
+    },
+  });
+
   const intervalHandle = schedule(() => {
     recomputePublicState();
     renderStreamState();
@@ -144,56 +171,6 @@ export function mountPublicPage(deps = {}) {
       diag.refreshStream();
     }
   }, 1000);
-
-  function handleControl(data) {
-    // Lot 4G : headers de flux direct (avant tout routeControl, qui n'accepte
-    // que les 5 contenus). Aucun secret transporté. Routage + rendu délégués au
-    // runtime stream ; seul l'orchestration (fraîcheur, diag) reste ici.
-    if (stream.ingest(data)) {
-      dbg('received stream control', data.header, data.values);
-      renderStreamState();
-      recomputePublicState();
-      diag.logControl(data);
-      diag.refreshStream();
-      return;
-    }
-    // Contenu (sound_* via routeControl, ou heartbeat) délégué au runtime contenu.
-    // applyControl rend, rafraîchit la fraîcheur, persiste ; retourne le timestamp
-    // sauvegardé (null si heartbeat / non routé / sauvegarde échouée).
-    const savedAt = content.applyControl(data);
-    if (savedAt) diag.setLocalSaved(savedAt);
-    recomputePublicState();
-    diag.logControl(data);
-    diag.refreshFreshness(freshness);
-  }
-
-  function handleStatus(status) {
-    connStatus = status;
-    freshness.setServerStatus(status);
-    recomputePublicState();
-    if (status === 'connected') { dbg('socket connected -> observe stream headers'); stream.observeHeaders(collabApi); } // (re)connexion -> réobserve
-    diag.setStatus(status);
-  }
-
-  connect({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE, onControl: handleControl, onStatus: handleStatus })
-    .then((api) => {
-      collabApi = api;
-      stream.observeHeaders(api); // 1re connexion (si déjà connectée, guard idempotent)
-      const diagOpts = {
-        initialRestore: content.getInitialRestore(),
-        initialSaved: content.getInitialSavedAt(),
-        runtimeConfig,
-        clear: () => content.clear(),
-        livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listener.getApi() ? listener.getApi().getSnapshot() : null }),
-        streamDiag: () => stream.diagSnapshot(collabApi),
-      };
-      // Montage diag gated par `debug` à l'intérieur du runtime (issue #7).
-      diag.mount(api, diagOpts, mountDiag).then(() => {
-        diag.refreshFreshness(freshness);
-        diag.refreshStream();
-      });
-    })
-    .catch((err) => onError('[Collab-Hub] connexion impossible :', err));
 
   if (LIVEKIT_ENABLED) {
     // Monte la section listener (import dynamique gate par enabled dans le runtime).
@@ -213,7 +190,7 @@ export function mountPublicPage(deps = {}) {
     tornDown = true;
     if (intervalHandle !== undefined && intervalHandle !== null) clearSchedule(intervalHandle);
     listener.destroy();
-    try { if (collabApi && collabApi.socket && typeof collabApi.socket.close === 'function') collabApi.socket.close(); } catch { /* socket déjà fermée */ }
+    collab.close();
   }
 
   return { teardown };
