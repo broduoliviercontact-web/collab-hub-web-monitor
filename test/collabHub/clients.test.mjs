@@ -162,6 +162,27 @@ test('connectCollabHub : API retournée expose observe/isObserved/observedCount/
   }
 });
 
+test('connectCollabHub : getDiagnostics snapshot homogène (connected, socketId, observedHeaders, observedCount)', async () => {
+  const f = fakeIo();
+  const api = await connectCollabHub({
+    serverUrl: 'https://server.collab-hub.io', namespace: 'hub', username: 'u', authMode: 'anonymous',
+    onControl: () => {}, onStatus: () => {}, ioFactory: f.io,
+  });
+  // Avant connexion : connected false, socketId null, rien observé.
+  let d = api.getDiagnostics();
+  assert.equal(d.connected, false);
+  assert.equal(d.socketId, null);
+  assert.deepEqual(d.observedHeaders, []);
+  assert.equal(d.observedCount, 0);
+  // Après connexion : connected true, socketId posé, headers observés.
+  f.last().sock._connect('s-xyz');
+  d = api.getDiagnostics();
+  assert.equal(d.connected, true);
+  assert.equal(d.socketId, 's-xyz');
+  assert.equal(d.observedCount, OBSERVABLE_HEADERS.length);
+  assert.deepEqual(d.observedHeaders.sort(), [...OBSERVABLE_HEADERS].sort());
+});
+
 // ===========================================================================
 // connectCollabHubPublisher — Control Room (register / deliver / reconnect)
 // ===========================================================================

@@ -35,5 +35,16 @@ export async function connectCollabHub({
     isObserved: guard.isObserved,
     observedCount: guard.observedCount,
     forget: guard.forget,
+    // Snapshot diagnostic homogène avec connectCollabHubPublisher.getDiagnostics()
+    // (issue #9) : champs communs connected + socketId + headers observés. Aucun
+    // secret (headers publics uniquement).
+    getDiagnostics() {
+      return {
+        connected: socket.connected,
+        socketId: socket.id || null,
+        observedHeaders: guard.observedHeaders(),
+        observedCount: guard.observedCount(),
+      };
+    },
   };
 }
