@@ -1,0 +1,32 @@
+# Exclusions Graphify — Lot Graphify complet.
+# On analyse le dépôt réel (racine) mais on exclut les artefacts générés, les
+# dépendances, les dossiers d'outillage et surtout tout fichier contenant des
+# SECRETS réels (.env, .env.local, .vercel/). Les noms de variables sont
+# documentés dans .env.example (valeurs factices) et les docs ; seules les
+# VALEURS réelles sont interdites d'analyse. Syntaxe gitignore.
+
+# Dépendances et artefacts de build
+node_modules/
+dist/
+release-package/
+
+# Outiling / dossiers d'outils (pas du code projet)
+.git/
+.vercel/
+.claude/
+.spike-research/
+.venv-graphify/
+.venv/
+
+# Sorties Graphify et corpus temporaire (évite la récursion)
+graphify-out/
+.graphify-input/
+
+# SECRETS réels — jamais analysés, jamais dans le graphe
+.env
+.env.local
+
+# Divers
+.DS_Store
+*.zip
+*.log

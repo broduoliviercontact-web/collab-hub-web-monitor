@@ -10,3 +10,17 @@ dist
 !.env.example
 release-package/
 CollabHub-Web-Monitor-Max-*.zip
+
+# --- Graphify (graphe de connaissances) ---
+# Venv Python isolé de Graphify (jamais commité).
+.venv-graphify/
+# Corpus temporaire et cache d'extraction (régénérables).
+.graphify-input/
+graphify-out/cache/
+# Fichiers de travail Graphify (régénérables). On GARDE uniquement les
+# produits finaux : graph.json, graph.html, GRAPH_REPORT.md, manifest.json,
+# cost.json. Les labels de communautés sont conservés dans GRAPH_REPORT.md.
+graphify-out/.graphify_*.json
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.needs_update
