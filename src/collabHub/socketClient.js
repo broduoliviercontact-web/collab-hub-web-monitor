@@ -6,7 +6,11 @@ import { KNOWN_HEADERS, OBSERVABLE_HEADERS } from './messageRouter.js';
 import { createObserveGuard, wireSocket } from './observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from './authMode.js';
 
-export async function connectCollabHub({ serverUrl, namespace, username, authMode, onControl, onStatus }) {
+export async function connectCollabHub({
+  serverUrl, namespace, username, authMode, onControl, onStatus,
+  // Injectable pour les tests (aucun effet en production) :
+  ioFactory = io,
+} = {}) {
   const mode = resolveAuthMode(authMode);
   const base = buildSocketUrl(serverUrl, namespace);
 
@@ -14,7 +18,7 @@ export async function connectCollabHub({ serverUrl, namespace, username, authMod
   // guest : tente le token, retombe sur l'anonyme en cas d'échec.
   const auth = await resolveAuth({ serverUrl, username, authMode: mode });
 
-  const socket = io(base, {
+  const socket = ioFactory(base, {
     auth,
     query: { username },
     transports: ['websocket'],
