@@ -21,14 +21,13 @@ import { createFreshnessState, computePublicStatus } from './state/freshness.js'
 import { createStreamStatus, routeStreamControl } from './state/streamStatus.js';
 import { renderStreamStatus, mountStreamCard } from './ui/streamStatusView.js';
 import { isLiveKitEnabled } from './listener/listenerUI.js';
-import { shouldMountPublicDebug } from './diagnostic/debugGate.js';
 import { buildRuntimeConfig } from './diagnostic/runtimeConfig.js';
+import { createDiagnosticsRuntime } from './public/publicDiagnosticsRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
-// n'affecte pas le code-splitting. Les chargeurs dynamiques (diag/listener) ne
-// sont PAS enrobés : leurs `import('./...')` littéraux restent inline dans le
-// corps (branche production) pour préserver le chunking Rollup identique au
-// comportement d'origine ; les tests injectent mountDiag/mountListener.
+// n'affecte pas le code-splitting. Les chargeurs dynamiques (diag/listener) sont
+// des flèches par défaut contenant le littéral `import('./...')` (Rollup code-
+// splitte toujours depuis un littéral) ; les tests injectent des fakes.
 function defaultConnect(opts) {
   return connectCollabHub(opts);
 }
@@ -49,8 +48,12 @@ export function mountPublicPage(deps = {}) {
       vercelEnv: typeof __VERCEL_ENV__ !== 'undefined' ? __VERCEL_ENV__ : null,
     },
     connect = defaultConnect,
-    mountDiag,
-    mountListener,
+    mountDiag = (api, opts) => {
+      const root = doc.getElementById('diagnostic');
+      if (!root) return Promise.resolve(null);
+      return import('./diagnostic/diagnosticPanel.js').then((m) => m.initDiagnostic(api, root, opts));
+    },
+    mountListener = (opts) => import('./listener/listenerSection.js').then(({ mountListenerSection }) => mountListenerSection(opts)),
     onError = (label, err) => console.error(label, err),
     log = (...a) => console.log(...a),
   } = deps;
@@ -68,9 +71,9 @@ export function mountPublicPage(deps = {}) {
   // la variable build publique VITE_PUBLIC_DEBUG_ENABLED vaut exactement 'true'.
   // En production (variable false) -> /?debug=1 monte AUCUN panneau (sécurité).
   // Le debug Control Room est gated par session performer (contrôlé ailleurs).
-  const PUBLIC_DEBUG_ENABLED = env.VITE_PUBLIC_DEBUG_ENABLED === 'true';
-  const debugParam = new URLSearchParams(loc.search).get('debug');
-  const debug = shouldMountPublicDebug({ debugParam, publicDebugEnabled: PUBLIC_DEBUG_ENABLED });
+  // Gate + montage diag extraits dans publicDiagnosticsRuntime (issue #7).
+  const diag = createDiagnosticsRuntime({ env, loc });
+  const debug = diag.debug;
   // Infos de build injectées via vite `define` (vite.config.js). typeof garde le
   // cas où le bloc define est absent (ex. tests hors build) -> null -> affiché « — ».
   const runtimeConfig = buildRuntimeConfig({ env, build: buildInfo });
@@ -133,7 +136,6 @@ export function mountPublicPage(deps = {}) {
   let lastPublicStatus = null;
   let lastFresh = null;
 
-  let diagApi = null;
   let listenerApi = null;
   let collabApi = null;
 
@@ -170,10 +172,10 @@ export function mountPublicPage(deps = {}) {
   const intervalHandle = schedule(() => {
     recomputePublicState();
     renderStreamState();
-    if (diagApi) {
-      diagApi.refreshFreshness(freshness);
-      if (diagApi.refreshLivekit) diagApi.refreshLivekit();
-      if (diagApi.refreshStream) diagApi.refreshStream();
+    if (diag.isMounted()) {
+      diag.refreshFreshness(freshness);
+      diag.refreshLivekit();
+      diag.refreshStream();
     }
   }, 1000);
 
@@ -194,7 +196,8 @@ export function mountPublicPage(deps = {}) {
       dbg('received stream control', data.header, data.values);
       renderStreamState();
       recomputePublicState();
-      if (diagApi) { diagApi.logControl(data); diagApi.refreshStream(); }
+      diag.logControl(data);
+      diag.refreshStream();
       return;
     }
     if (data && data.header === HEARTBEAT_HEADER) {
@@ -211,12 +214,13 @@ export function mountPublicPage(deps = {}) {
         const saved = saveSoundState(storage, state.snapshot());
         if (saved) {
           lastSavedAt = saved.updatedAt;
-          if (diagApi) diagApi.setLocalSaved(saved.updatedAt);
+          diag.setLocalSaved(saved.updatedAt);
         }
       }
     }
     recomputePublicState();
-    if (diagApi) { diagApi.logControl(data); diagApi.refreshFreshness(freshness); }
+    diag.logControl(data);
+    diag.refreshFreshness(freshness);
   }
 
   function handleStatus(status) {
@@ -224,48 +228,36 @@ export function mountPublicPage(deps = {}) {
     freshness.setServerStatus(status);
     recomputePublicState();
     if (status === 'connected') { dbg('socket connected -> observe stream headers'); observeStreamHeaders(); } // (re)connexion -> réobserve
-    if (diagApi) diagApi.setStatus(status);
+    diag.setStatus(status);
   }
 
   connect({ serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE, onControl: handleControl, onStatus: handleStatus })
     .then((api) => {
       collabApi = api;
       observeStreamHeaders(); // 1re connexion (si déjà connectée, guard idempotent)
-      if (debug) {
-        const diagOpts = {
-          initialRestore: lastLocalRestore,
-          initialSaved: lastSavedAt,
-          runtimeConfig,
-          clear: () => { const ok = clearSoundState(storage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
-          livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listenerApi ? listenerApi.getSnapshot() : null }),
-          streamDiag: () => streamStatus ? {
-            ...streamStatus.getSnapshot(),
-            ...streamStatus.getDiagnostics(),
-            observedStreamHeaders: collabApi ? STREAM_HEADERS.filter((h) => collabApi.isObserved(h)) : [],
-          } : null,
-        };
-        // import('./...') littéral inline (branche production) -> chunking Rollup
-        // identique à l'origine ; mountDiag injecté (tests) court-circuite l'import.
-        const diagPromise = mountDiag
-          ? Promise.resolve(mountDiag(api, diagOpts))
-          : (() => { const root = doc.getElementById('diagnostic'); if (!root) return Promise.resolve(null); return import('./diagnostic/diagnosticPanel.js').then((m) => m.initDiagnostic(api, root, diagOpts)); })();
-        diagPromise.then((d) => {
-          if (!d) return;
-          diagApi = d;
-          diagApi.refreshFreshness(freshness);
-          if (diagApi.refreshStream) diagApi.refreshStream();
-        });
-      }
+      const diagOpts = {
+        initialRestore: lastLocalRestore,
+        initialSaved: lastSavedAt,
+        runtimeConfig,
+        clear: () => { const ok = clearSoundState(storage); if (ok) { lastSavedAt = null; lastLocalRestore = null; } return ok; },
+        livekitDiag: () => ({ enabled: LIVEKIT_ENABLED, snapshot: listenerApi ? listenerApi.getSnapshot() : null }),
+        streamDiag: () => streamStatus ? {
+          ...streamStatus.getSnapshot(),
+          ...streamStatus.getDiagnostics(),
+          observedStreamHeaders: collabApi ? STREAM_HEADERS.filter((h) => collabApi.isObserved(h)) : [],
+        } : null,
+      };
+      // Montage diag gated par `debug` à l'intérieur du runtime (issue #7).
+      diag.mount(api, diagOpts, mountDiag).then(() => {
+        diag.refreshFreshness(freshness);
+        diag.refreshStream();
+      });
     })
     .catch((err) => onError('[Collab-Hub] connexion impossible :', err));
 
   if (LIVEKIT_ENABLED) {
-    // import('./...') littéral inline (branche production) -> chunking Rollup
-    // identique à l'origine ; mountListener injecté (tests) court-circuite l'import.
-    const listenerPromise = mountListener
-      ? Promise.resolve(mountListener({ mountAfter: streamAnchor }))
-      : import('./listener/listenerSection.js').then(({ mountListenerSection }) => mountListenerSection({ mountAfter: streamAnchor }));
-    listenerPromise
+    // mountListener (défaut = import dynamique littéral) gated par LIVEKIT_ENABLED.
+    mountListener({ mountAfter: streamAnchor })
       .then((api) => {
         listenerApi = api;
         // Lot 5 : récupère le span de compteur d'auditeurs après montage de la
