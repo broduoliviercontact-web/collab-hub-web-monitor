@@ -21,6 +21,7 @@ import { createListenerRuntime } from './public/publicListenerRuntime.js';
 import { createStreamRuntime } from './public/publicStreamRuntime.js';
 import { createContentRuntime } from './public/publicContentRuntime.js';
 import { createImageRuntime } from './public/publicImageRuntime.js';
+import { createTextVisibilityRuntime } from './public/publicTextVisibilityRuntime.js';
 import { createCollabHubRuntime } from './public/publicCollabHubRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
@@ -119,6 +120,16 @@ export function mountPublicPage(deps = {}) {
     },
   });
 
+  // Préférences afficher/masquer, éphémères comme l'image et sans incidence
+  // sur le contenu persistant envoyé par Max.
+  const textVisibility = createTextVisibilityRuntime({
+    els: {
+      titleSection: els.titleSection, authorSection: els.authorSection,
+      subtitleSection: els.subtitleSection, descriptionSection: els.descriptionSection,
+      linkWrap: els.linkWrap,
+    },
+  });
+
   // --- État de flux direct (Lot 4G) : statut public AVANT connexion LiveKit ---
   // La logique métier (streamStatus, observation des headers stream_*, routage,
   // carte de flux + mini VU, compteur d'auditeurs, fraîcheur stale/fresh, snapshot
@@ -160,7 +171,7 @@ export function mountPublicPage(deps = {}) {
   // referont le pont vers le reste (statut public, montage diag).
   const collab = createCollabHubRuntime({
     connect, serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE,
-    stream, content, image, diag, dbg,
+    stream, content, image, textVisibility, diag, dbg,
     recomputePublicState, renderStreamState, onError,
     onConnected: (api) => {
       const diagOpts = {

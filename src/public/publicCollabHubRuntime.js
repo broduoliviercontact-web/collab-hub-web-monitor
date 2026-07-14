@@ -10,7 +10,7 @@
 // via collab.getApi() ; le montage diag est orchestré par la racine via onConnected.
 export function createCollabHubRuntime({
   connect, serverUrl, namespace, username, authMode,
-  stream, content, image, diag, dbg = () => {},
+  stream, content, image, textVisibility, diag, dbg = () => {},
   recomputePublicState, renderStreamState, onConnected = () => {}, onError,
 }) {
   let collabApi = null;
@@ -33,9 +33,15 @@ export function createCollabHubRuntime({
       diag.logControl(data);
       return;
     }
+    if (textVisibility && textVisibility.applyControl(data, content.rerender)) {
+      dbg('received text visibility control', data.header, data.values);
+      diag.logControl(data);
+      return;
+    }
     // applyControl rend, rafraîchit la fraîcheur, persiste ; retourne le timestamp
     // sauvegardé (null si heartbeat / non routé / sauvegarde échouée).
     const savedAt = content.applyControl(data);
+    if (textVisibility) textVisibility.applyForContent(data?.header);
     if (savedAt) diag.setLocalSaved(savedAt);
     recomputePublicState();
     diag.logControl(data);

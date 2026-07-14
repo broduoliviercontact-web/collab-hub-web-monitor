@@ -13,7 +13,7 @@ import {
   CONTENT_FRESH_THRESHOLD_MS,
 } from '../state/freshness.js';
 import { STALE_MS } from '../state/streamStatus.js';
-import { IMAGE_HEADERS } from '../collabHub/messageRouter.js';
+import { IMAGE_HEADERS, TEXT_VISIBILITY_HEADERS } from '../collabHub/messageRouter.js';
 
 // Seuil de péremption par header. Les headers de flux (stream_*) sont périmés
 // après STALE_MS (3 s, spec Lot 4G). Le heartbeat Max après 25 s (activité Max).
@@ -37,6 +37,7 @@ export const HEADERS_TABLE = [
   'sound_description',
   'sound_link',
   ...IMAGE_HEADERS,
+  ...TEXT_VISIBILITY_HEADERS,
   'sound_heartbeat',
   'stream_onair',
   'stream_level',

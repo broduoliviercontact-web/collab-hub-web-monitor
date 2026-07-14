@@ -68,28 +68,39 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   > header publié par passage (2 au lieu de 10). Le send/receive + `delay 300`
   > garantit que les **5** headers partent à **chaque** passage, dans un ordre
   > déterministe, sans envoi parasite.
-- **Zone 4 — IMAGE DE PROGRAMME** (issue #26) : six boîtes message contrôlent
+- **Zone 4 — IMAGE DE PROGRAMME** (issue #26) : sept boîtes message contrôlent
   `sound_image_url`, `sound_image_visible`, `sound_image_width`,
   `sound_image_height`, `sound_image_fit`, `sound_image_position` et
   `sound_image_slot`. Cliquer
-  une boîte publie son champ ; **ENVOYER LES 6 CHAMPS IMAGE** utilise
+  une boîte publie son champ ; **ENVOYER LES 7 CHAMPS IMAGE** utilise
   `send/receive ch_img7` et le même double passage register/deliver. Les
-  valeurs par défaut sont une URL exemple, `true`, `100%`, `auto`, `contain`
-  et `center`.
+  valeurs par défaut sont une URL exemple, `true`, `100%`, `420px`, `cover`
+  et `center`. Ce cadre recadré permet à `sound_image_position` d'agir dès le
+  premier envoi.
 
   Côté web, les URL `http(s)` et les chemins locaux sûrs `/images/...` sont
   affichés. Les tailles admises sont
   `auto`, `px` jusqu'à 1600, `%`, `vw` ou `vh` jusqu'à 100 ; le cadrage accepte
   `contain`, `cover`, `fill`, `none`, `scale-down`, et la position accepte le
   centre, les bords ou les coins. Une valeur invalide retombe sur une valeur
-  sûre. L'image est éphémère : elle n'est jamais sauvegardée dans le navigateur.
+  sûre. Pour déplacer le cadrage, utiliser une hauteur différente de `auto`
+  avec `cover` (par exemple `420px`, `cover`, puis `top` ou `bottom`). Avec
+  `auto` et `contain`, l'image entière est visible et il n'y a donc rien à
+  déplacer. L'image est éphémère : elle n'est jamais sauvegardée dans le navigateur.
   `sound_image_slot` déplace le bloc image : `top` (avant le titre),
   `after_title` (entre titre et auteur), `after_author` (après l'auteur),
   `after_subtitle` (après le sous-titre) ou `bottom` (après la description).
-- **Zone 5 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
+- **Zone 5 — VISIBILITÉ DES TEXTES** : cinq boîtes message pilotent
+  `sound_title_visible`, `sound_author_visible`, `sound_subtitle_visible`,
+  `sound_description_visible` et `sound_link_visible`. Envoyer `true` (ou `1`)
+  affiche le champ ; `false` (ou `0`) le masque sans supprimer son contenu.
+  **ENVOYER LES 5 VISIBILITÉS TEXTE** emploie `send/receive ch_vis5` avec le
+  même double passage que les autres groupes. Ces préférences sont éphémères :
+  elles reviennent à `true` après un rechargement de la page.
+- **Zone 6 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
-- **Zone 6 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
+- **Zone 7 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
   tant que le CH-Client est connecté. `connected` (sortie 1 de
   `route serverMessage connected`) pilote un `toggle` qui démarre/arrête
   `metro 10000` ; chaque tick -> `push all sound_heartbeat 1` vers
@@ -134,15 +145,21 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    `[Site artiste]{https://example.com}`, cliquer **Envoyer** deux fois puis
    vérifier la valeur complète dans `values` et sur la page web.
 9. Descendre à **IMAGE DE PROGRAMME**, garder l'URL exemple ou saisir une URL
-   `https://...`, puis cliquer **ENVOYER LES 6 CHAMPS IMAGE**. Vérifier
-   l'affichage, tester `cover`, `top right`, puis `false` dans
+   `https://...`, puis cliquer **ENVOYER LES 7 CHAMPS IMAGE**. Vérifier
+   l'affichage, garder `420px` et `cover`, puis tester `top right` ou `bottom`, puis `false` dans
    `sound_image_visible`. Tester aussi `sound_image_slot` avec `top`,
    `after_title`, `after_author`, `after_subtitle` et `bottom`. Une nouvelle
    URL doit remplacer l'image.
    Le visuel versionné de test peut être appelé avec
    `/images/collab-hub-image-test.svg` : il fonctionne en local et sur chaque
    déploiement Vercel, sans modifier l'URL dans Max.
-10. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
+10. Descendre à **VISIBILITÉ DES TEXTES** : saisir `false` dans
+    `sound_title_visible`, cliquer **ENVOYER LES 5 VISIBILITÉS TEXTE** et
+    vérifier que seul le titre disparaît. Repasser à `true` : le même titre
+    réapparaît sans devoir le renvoyer. Répéter avec `sound_author_visible`,
+    `sound_subtitle_visible`, `sound_description_visible` et
+    `sound_link_visible`.
+11. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
    `connected 0` côté Max, rétablir, renvoyer un champ → nouvel événement.
 
 ## Dépannage
