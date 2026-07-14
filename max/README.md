@@ -68,21 +68,25 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   > header publié par passage (2 au lieu de 10). Le send/receive + `delay 300`
   > garantit que les **5** headers partent à **chaque** passage, dans un ordre
   > déterministe, sans envoi parasite.
-- **Zone 4 — IMAGE DE PROGRAMME** (issue #26) : six boîtes message contrôlent
+- **Zone 4 — IMAGE DE PROGRAMME** (issue #26) : sept boîtes message contrôlent
   `sound_image_url`, `sound_image_visible`, `sound_image_width`,
   `sound_image_height`, `sound_image_fit`, `sound_image_position` et
   `sound_image_slot`. Cliquer
-  une boîte publie son champ ; **ENVOYER LES 6 CHAMPS IMAGE** utilise
+  une boîte publie son champ ; **ENVOYER LES 7 CHAMPS IMAGE** utilise
   `send/receive ch_img7` et le même double passage register/deliver. Les
-  valeurs par défaut sont une URL exemple, `true`, `100%`, `auto`, `contain`
-  et `center`.
+  valeurs par défaut sont une URL exemple, `true`, `100%`, `420px`, `cover`
+  et `center`. Ce cadre recadré permet à `sound_image_position` d'agir dès le
+  premier envoi.
 
   Côté web, les URL `http(s)` et les chemins locaux sûrs `/images/...` sont
   affichés. Les tailles admises sont
   `auto`, `px` jusqu'à 1600, `%`, `vw` ou `vh` jusqu'à 100 ; le cadrage accepte
   `contain`, `cover`, `fill`, `none`, `scale-down`, et la position accepte le
   centre, les bords ou les coins. Une valeur invalide retombe sur une valeur
-  sûre. L'image est éphémère : elle n'est jamais sauvegardée dans le navigateur.
+  sûre. Pour déplacer le cadrage, utiliser une hauteur différente de `auto`
+  avec `cover` (par exemple `420px`, `cover`, puis `top` ou `bottom`). Avec
+  `auto` et `contain`, l'image entière est visible et il n'y a donc rien à
+  déplacer. L'image est éphémère : elle n'est jamais sauvegardée dans le navigateur.
   `sound_image_slot` déplace le bloc image : `top` (avant le titre),
   `after_title` (entre titre et auteur), `after_author` (après l'auteur),
   `after_subtitle` (après le sous-titre) ou `bottom` (après la description).
@@ -134,8 +138,8 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    `[Site artiste]{https://example.com}`, cliquer **Envoyer** deux fois puis
    vérifier la valeur complète dans `values` et sur la page web.
 9. Descendre à **IMAGE DE PROGRAMME**, garder l'URL exemple ou saisir une URL
-   `https://...`, puis cliquer **ENVOYER LES 6 CHAMPS IMAGE**. Vérifier
-   l'affichage, tester `cover`, `top right`, puis `false` dans
+   `https://...`, puis cliquer **ENVOYER LES 7 CHAMPS IMAGE**. Vérifier
+   l'affichage, garder `420px` et `cover`, puis tester `top right` ou `bottom`, puis `false` dans
    `sound_image_visible`. Tester aussi `sound_image_slot` avec `top`,
    `after_title`, `after_author`, `after_subtitle` et `bottom`. Une nouvelle
    URL doit remplacer l'image.

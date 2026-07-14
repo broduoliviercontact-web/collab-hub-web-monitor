@@ -7,6 +7,7 @@ import { renderField, isSafeHttpUrl, parseSoundLink, parseCollabMarkup } from '.
 import {
   isSafeImageSource, parseImageFit, parseImagePosition, parseImageSize, parseImageSlot, parseImageVisible, placeSoundImage, renderSoundImage,
 } from '../../src/ui/renderSoundImage.js';
+import { IMAGE_DEFAULTS } from '../../src/state/imageState.js';
 import {
   createStreamStatus, routeStreamControl,
   STALE_MS, SIGNAL_THRESHOLD,
@@ -102,6 +103,11 @@ test('renderSoundImage : URL sûre, visibilité et cadrage sont appliqués sans 
   assert.equal(parseImageSize('url(evil)', '100%'), '100%');
   assert.equal(parseImageFit('expression(evil)'), 'contain');
   assert.equal(parseImagePosition('left; color:red'), 'center');
+});
+
+test('image defaults create a cropped frame so sound_image_position is visible', () => {
+  assert.equal(IMAGE_DEFAULTS.sound_image_height, '420px');
+  assert.equal(IMAGE_DEFAULTS.sound_image_fit, 'cover');
 });
 
 test('renderSoundImage : URL interdite ou image masquée retire la source', () => {

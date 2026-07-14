@@ -6,8 +6,9 @@ export const IMAGE_DEFAULTS = {
   sound_image_url: '',
   sound_image_visible: 'true',
   sound_image_width: '100%',
-  sound_image_height: 'auto',
-  sound_image_fit: 'contain',
+  // Un cadre recadré rend sound_image_position immédiatement perceptible.
+  sound_image_height: '420px',
+  sound_image_fit: 'cover',
   sound_image_position: 'center',
   sound_image_slot: 'after_subtitle',
 };
