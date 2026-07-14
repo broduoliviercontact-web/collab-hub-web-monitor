@@ -84,6 +84,8 @@ export function mountPublicPage(deps = {}) {
   // --- Refs DOM ---
   const els = {
     card: doc.querySelector('main.card'),
+    showNameSection: doc.getElementById('sound-show-name-wrap'),
+    showName: doc.getElementById('sound-show-name'),
     titleSection: doc.getElementById('sound-title-wrap'),
     authorSection: doc.getElementById('sound-author-wrap'),
     title: doc.getElementById('sound-title'),
@@ -100,18 +102,22 @@ export function mountPublicPage(deps = {}) {
     statusDot: doc.getElementById('status-dot'),
   };
 
-  // --- Contenu (Lot 3A/3B) : 5 champs sound_*, persistance locale, fraîcheur
+  // --- Contenu (Lot 3A/3B) : 6 champs sound_*, persistance locale, fraîcheur
   // contenu Max. Extrait dans publicContentRuntime (issue #7). Le runtime expose
   // `freshness` (consommé par le statut public + le diag) et un `clear()` (diag).
   const content = createContentRuntime({
     doc,
-    els: { title: els.title, author: els.author, subtitle: els.subtitle, description: els.description, linkWrap: els.linkWrap, link: els.link },
+    els: {
+      showName: els.showName, showNameSection: els.showNameSection,
+      title: els.title, author: els.author, subtitle: els.subtitle,
+      description: els.description, linkWrap: els.linkWrap, link: els.link,
+    },
     storage, now,
   });
   const freshness = content.freshness;
 
   // Image de programme (issue #26) : état transitoire, sans localStorage ni
-  // impact sur la fraîcheur des cinq champs éditoriaux.
+  // impact sur la fraîcheur des six champs éditoriaux.
   const image = createImageRuntime({
     els: {
       card: els.card, wrap: els.imageWrap, image: els.image,
@@ -124,6 +130,7 @@ export function mountPublicPage(deps = {}) {
   // sur le contenu persistant envoyé par Max.
   const textVisibility = createTextVisibilityRuntime({
     els: {
+      showNameSection: els.showNameSection, showName: els.showName,
       titleSection: els.titleSection, authorSection: els.authorSection,
       subtitleSection: els.subtitleSection, descriptionSection: els.descriptionSection,
       linkWrap: els.linkWrap,

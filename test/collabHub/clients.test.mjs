@@ -76,7 +76,7 @@ test('connectCollabHub : mode anonymous -> aucune auth (auth = {})', async () =>
   assert.deepEqual(f.last().opts.auth, {});
 });
 
-test('connectCollabHub : observe OBSERVABLE_HEADERS au connect (5 contenus + heartbeat)', async () => {
+test('connectCollabHub : observe OBSERVABLE_HEADERS au connect (6 contenus + heartbeat)', async () => {
   const f = fakeIo();
   const statuses = [];
   const api = await connectCollabHub({

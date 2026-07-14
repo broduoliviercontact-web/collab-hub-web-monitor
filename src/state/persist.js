@@ -15,7 +15,7 @@ export const STORAGE_KEY = 'collabHubSoundState:v1';
 export const STORAGE_VERSION = 1;
 const MAX_FIELD_LEN = 4096; // valeur raisonnable : un champ texte éditorial.
 
-// Construit le payload à persister (uniquement les 5 headers connus, strings).
+// Construit le payload à persister (uniquement les 6 headers connus, strings).
 export function serializeSoundState(snapshot, updatedAt) {
   const fields = {};
   for (const h of KNOWN_HEADERS) {

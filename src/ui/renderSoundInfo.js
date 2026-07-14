@@ -96,7 +96,7 @@ export function parseSoundLink(value) {
   return segments;
 }
 
-// Syntaxe Collab-Hub commune aux cinq champs sound_*.
+// Syntaxe Collab-Hub commune aux six champs sound_*.
 // Ce n'est volontairement PAS du Markdown complet : seul ce petit sous-ensemble
 // éditorial est reconnu et chaque autre caractère reste du texte littéral.
 const COLOR_TOKENS = new Set(['red', 'green', 'blue', 'muted', 'accent']);
@@ -206,6 +206,7 @@ export function parseCollabMarkup(value) {
 }
 
 const FIELD_TO_EL = {
+  sound_show_name: 'showName',
   sound_title: 'title',
   sound_author: 'author',
   sound_subtitle: 'subtitle',
@@ -222,6 +223,9 @@ export function fieldElementKey(header) {
 // TextNode + éléments via les APIs DOM).
 export function renderField(header, value, els, doc = (typeof document !== 'undefined' ? document : null)) {
   switch (header) {
+    case 'sound_show_name':
+      applyShowName(value, els, doc);
+      break;
     case 'sound_title':
       applyMarkup(value, els.title, doc);
       break;
@@ -240,6 +244,12 @@ export function renderField(header, value, els, doc = (typeof document !== 'unde
     default:
       break;
   }
+}
+
+function applyShowName(value, els, doc) {
+  const source = typeof value === 'string' ? value : String(value ?? '');
+  applyMarkup(source, els.showName, doc);
+  if (els.showNameSection) els.showNameSection.hidden = source.trim() === '';
 }
 
 function buildMarkupNodes(doc, segments) {

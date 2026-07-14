@@ -1,6 +1,6 @@
 // Runtime de contenu public (issue #7). Extrait de mountPublicPage().
 //
-// Responsabilités : état des 5 champs sound_* (createSoundState), rendu du
+// Responsabilités : état des 6 champs sound_* (createSoundState), rendu du
 // contenu (renderField + flashElement), persistance locale (load/save/clear),
 // fraîcheur contenu Max (createFreshnessState : onContentUpdate, onHeartbeat,
 // restoreContent, isContentFresh, isMaxActive, setServerStatus), et notification

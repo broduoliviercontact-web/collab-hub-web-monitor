@@ -17,7 +17,7 @@ export function createCollabHubRuntime({
   let connStatus = null;
 
   // Dispatch de routage d'un message de contrôle. Headers stream_* -> runtime
-  // flux (avant tout routeControl, qui n'accepte que les 5 contenus) ; sinon
+  // flux (avant tout routeControl, qui n'accepte que les 6 contenus) ; sinon
   // contenu (sound_* ou heartbeat). Aucun secret transporté.
   function handleControl(data) {
     if (stream.ingest(data)) {

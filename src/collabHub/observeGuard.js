@@ -37,10 +37,10 @@ export function createObserveGuard({ emit }) {
 // dupliqué connect/control. La réobservation est idempotent via le guard.
 export function wireSocket(socket, guard, { onStatus, onControl }) {
   // Ordre important : observer AVANT onStatus('connected') pour que le
-  // diagnostic (notifié via onStatus) voie déjà les 5 headers observés.
+  // diagnostic (notifié via onStatus) voie déjà les 6 headers observés.
   const onConnect = () => {
     guard.setConnected(true);
-    // Observe les 5 contenus + le heartbeat (Lot 3B).
+    // Observe les 6 contenus + le heartbeat (Lot 3B).
     guard.observeKnownHeadersOnce(OBSERVABLE_HEADERS);
     onStatus('connected');
   };

@@ -47,8 +47,8 @@ test('routeControl route les headers connus avec valeur normalisée', () => {
 
 // 5. URL https valide acceptée
 
-test('KNOWN_HEADERS contient exactement les 5 headers', () => {
-  assert.deepEqual(KNOWN_HEADERS, ['sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link']);
+test('KNOWN_HEADERS contient exactement les 6 headers', () => {
+  assert.deepEqual(KNOWN_HEADERS, ['sound_show_name', 'sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link']);
 });
 
 test('routeImageControl route uniquement les 7 headers image', () => {
@@ -60,13 +60,14 @@ test('routeImageControl route uniquement les 7 headers image', () => {
   assert.equal(IMAGE_HEADERS.length, 7);
 });
 
-test('routeTextVisibilityControl route uniquement les 5 préférences texte', () => {
+test('routeTextVisibilityControl route uniquement les 6 préférences texte', () => {
   let received = null;
   const routed = routeTextVisibilityControl({ header: 'sound_title_visible', values: ['false'] }, (h, v) => { received = { h, v }; });
   assert.equal(routed, true);
   assert.deepEqual(received, { h: 'sound_title_visible', v: 'false' });
   assert.equal(routeTextVisibilityControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
-  assert.equal(TEXT_VISIBILITY_HEADERS.length, 5);
+  assert.equal(TEXT_VISIBILITY_HEADERS.length, 6);
+  assert.ok(TEXT_VISIBILITY_HEADERS.includes('sound_show_name_visible'));
 });
 
 // --- Lot 1.1 : observation idempotente (observeGuard / wireSocket) ---
@@ -82,18 +83,18 @@ test('observeGuard : header observé 2x n émet qu une fois', () => {
   assert.deepEqual(emitted, ['sound_title']);
 });
 
-// 11. cinq headers observés deux fois -> exactement 5 émissions
+// 11. six headers observés deux fois -> exactement 6 émissions
 
-test('observeGuard : 5 headers x2 -> 5 émissions, tous marqués observés', () => {
+test('observeGuard : 6 headers x2 -> 6 émissions, tous marqués observés', () => {
   const emitted = [];
   const g = createObserveGuard({ emit: (h) => emitted.push(h) });
   g.setConnected(true);
   g.observeKnownHeadersOnce();
   g.observeKnownHeadersOnce();
-  assert.equal(emitted.length, 5);
+  assert.equal(emitted.length, 6);
   assert.deepEqual(emitted.sort(), [...KNOWN_HEADERS].sort());
   assert.equal(KNOWN_HEADERS.every((h) => g.isObserved(h)), true);
-  assert.equal(g.observedCount(), 5);
+  assert.equal(g.observedCount(), 6);
 });
 
 // 12. après reset (disconnect), on peut réobserver
@@ -117,7 +118,7 @@ test('observeGuard : observeKnownHeadersOnce n observe pas un header inconnu', (
   g.setConnected(true);
   g.observeKnownHeadersOnce();
   assert.equal(g.isObserved('unknown'), false);
-  assert.equal(g.observedCount(), 5);
+  assert.equal(g.observedCount(), 6);
 });
 
 // 14. changement de socket.id réinitialise l état (disconnect puis connect)

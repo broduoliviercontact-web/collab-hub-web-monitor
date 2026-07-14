@@ -199,6 +199,18 @@ test('5. réception sound_* : rendu du champ + persistance locale', async () => 
   r.teardown();
 });
 
+test('5b. sound_show_name : affiché si reçu, masqué s il est vide et persisté', async () => {
+  const { conn, storage, doc, r } = mount();
+  await flush();
+  conn.getOpts().onControl({ header: 'sound_show_name', values: 'Radio 2' });
+  assert.equal(doc.getElementById('sound-show-name').textContent, 'Radio 2');
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, false);
+  assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)).fields.sound_show_name, 'Radio 2');
+  conn.getOpts().onControl({ header: 'sound_show_name', values: '' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, true);
+  r.teardown();
+});
+
 test('6. réception stream_* : routé vers streamStatus, non persisté comme contenu', async () => {
   const { conn, storage, doc, r } = mount();
   await flush();
@@ -239,6 +251,15 @@ test('6c. visibilité des textes : masque sans effacer et reste hors localStorag
   assert.equal(doc.getElementById('sound-link-wrap').hidden, true);
   conn.getOpts().onControl({ header: 'sound_link_visible', values: 'true' });
   assert.equal(doc.getElementById('sound-link-wrap').hidden, false);
+
+  conn.getOpts().onControl({ header: 'sound_show_name', values: 'Radio 2' });
+  conn.getOpts().onControl({ header: 'sound_show_name_visible', values: 'false' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, true);
+  assert.equal(doc.getElementById('sound-show-name').textContent, 'Radio 2');
+  conn.getOpts().onControl({ header: 'sound_show_name_visible', values: 'true' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, false);
+  conn.getOpts().onControl({ header: 'sound_show_name', values: '' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, true, 'true ne révèle pas un nom d émission vide');
   r.teardown();
 });
 
