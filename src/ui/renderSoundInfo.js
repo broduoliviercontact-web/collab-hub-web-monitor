@@ -1,6 +1,6 @@
 // Rendu DOM des champs. Pur vis-à-vis du document : reçoit des refs d'éléments.
 // N'utilise JAMAIS innerHTML. Uniquement textContent / setAttribute / hidden et,
-// pour sound_link enrichi, des TextNode + éléments <a> créés via les APIs DOM.
+// pour les champs enrichis, des TextNode + éléments créés via les APIs DOM.
 
 // Valide qu'une URL est http(s) uniquement (refuse javascript:, data:, etc.).
 export function isSafeHttpUrl(url) {
@@ -96,6 +96,104 @@ export function parseSoundLink(value) {
   return segments;
 }
 
+// Syntaxe Collab-Hub commune aux cinq champs sound_*.
+// Ce n'est volontairement PAS du Markdown complet : seul ce petit sous-ensemble
+// éditorial est reconnu et chaque autre caractère reste du texte littéral.
+const COLOR_TOKENS = new Set(['red', 'green', 'blue', 'muted', 'accent']);
+
+function pushText(segments, value) {
+  if (value === '') return;
+  const previous = segments[segments.length - 1];
+  if (previous?.type === 'text') previous.value += value;
+  else segments.push({ type: 'text', value });
+}
+
+function findClosing(value, marker, start) {
+  const end = value.indexOf(marker, start);
+  return end === start ? -1 : end;
+}
+
+// Retourne des segments sûrs, y compris des segments imbriqués pour le gras,
+// l'italique et la couleur. Les liens ne sont créés que pour http(s).
+export function parseCollabMarkup(value) {
+  const source = typeof value === 'string' ? value : String(value ?? '');
+  const segments = [];
+  let i = 0;
+
+  while (i < source.length) {
+    if (source.startsWith('|||', i)) {
+      segments.push({ type: 'separator' });
+      i += 3;
+      continue;
+    }
+    if (source.startsWith('||', i)) {
+      segments.push({ type: 'paragraphBreak' });
+      i += 2;
+      continue;
+    }
+    if (source[i] === '|') {
+      segments.push({ type: 'lineBreak' });
+      i += 1;
+      continue;
+    }
+
+    if (source[i] === '[') {
+      const labelEnd = source.indexOf(']', i + 1);
+      if (labelEnd !== -1 && source[labelEnd + 1] === '{') {
+        const directiveEnd = source.indexOf('}', labelEnd + 2);
+        if (directiveEnd !== -1) {
+          const label = source.slice(i + 1, labelEnd);
+          const directive = source.slice(labelEnd + 2, directiveEnd).trim();
+          if (label.trim() !== '' && isSafeHttpUrl(directive)) {
+            segments.push({ type: 'link', label, href: directive });
+            i = directiveEnd + 1;
+            continue;
+          }
+          const color = directive.match(/^color:(red|green|blue|muted|accent)$/i)?.[1]?.toLowerCase();
+          if (label.trim() !== '' && COLOR_TOKENS.has(color)) {
+            segments.push({ type: 'color', color, children: parseCollabMarkup(label) });
+            i = directiveEnd + 1;
+            continue;
+          }
+          // Directive inconnue ou interdite : le fragment reste littéral.
+          pushText(segments, source.slice(i, directiveEnd + 1));
+          i = directiveEnd + 1;
+          continue;
+        }
+      }
+    }
+
+    if (source.startsWith('**', i)) {
+      const end = findClosing(source, '**', i + 2);
+      if (end !== -1) {
+        segments.push({ type: 'strong', children: parseCollabMarkup(source.slice(i + 2, end)) });
+        i = end + 2;
+        continue;
+      }
+    }
+    if (source[i] === '*') {
+      const end = findClosing(source, '*', i + 1);
+      if (end !== -1) {
+        segments.push({ type: 'em', children: parseCollabMarkup(source.slice(i + 1, end)) });
+        i = end + 1;
+        continue;
+      }
+    }
+    if (source[i] === '`') {
+      const end = findClosing(source, '`', i + 1);
+      if (end !== -1) {
+        segments.push({ type: 'code', value: source.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+
+    pushText(segments, source[i]);
+    i += 1;
+  }
+  return segments;
+}
+
 const FIELD_TO_EL = {
   sound_title: 'title',
   sound_author: 'author',
@@ -109,21 +207,21 @@ export function fieldElementKey(header) {
 }
 
 // Met à jour un champ vers le DOM. `els` = map de refs DOM. `doc` (optionnel,
-// défaut : document global) est requis pour le rendu enrichi de sound_link
-// (création de TextNode + <a> via les APIs DOM).
+// défaut : document global) est requis pour le rendu enrichi (création de
+// TextNode + éléments via les APIs DOM).
 export function renderField(header, value, els, doc = (typeof document !== 'undefined' ? document : null)) {
   switch (header) {
     case 'sound_title':
-      els.title.textContent = value;
+      applyMarkup(value, els.title, doc);
       break;
     case 'sound_author':
-      els.author.textContent = value;
+      applyMarkup(value, els.author, doc);
       break;
     case 'sound_subtitle':
-      els.subtitle.textContent = value;
+      applyMarkup(value, els.subtitle, doc);
       break;
     case 'sound_description':
-      els.description.textContent = value;
+      applyMarkup(value, els.description, doc);
       break;
     case 'sound_link':
       applyLink(value, els, doc);
@@ -133,9 +231,60 @@ export function renderField(header, value, els, doc = (typeof document !== 'unde
   }
 }
 
+function buildMarkupNodes(doc, segments) {
+  const nodes = [];
+  for (const segment of segments) {
+    if (segment.type === 'text') {
+      nodes.push(doc.createTextNode(segment.value));
+    } else if (segment.type === 'lineBreak') {
+      nodes.push(doc.createElement('br'));
+    } else if (segment.type === 'paragraphBreak' || segment.type === 'separator') {
+      const marker = doc.createElement('span');
+      marker.setAttribute('class', `collab-${segment.type === 'separator' ? 'separator' : 'paragraph-break'}`);
+      marker.setAttribute('aria-hidden', 'true');
+      nodes.push(marker);
+    } else if (segment.type === 'code') {
+      const code = doc.createElement('code');
+      code.textContent = segment.value;
+      nodes.push(code);
+    } else if (segment.type === 'link') {
+      const link = doc.createElement('a');
+      link.setAttribute('href', segment.href);
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noopener noreferrer');
+      link.textContent = segment.label;
+      nodes.push(link);
+    } else {
+      const tag = segment.type === 'strong' ? 'strong' : segment.type === 'em' ? 'em' : 'span';
+      const element = doc.createElement(tag);
+      if (segment.type === 'color') element.setAttribute('class', `collab-color collab-color--${segment.color}`);
+      element.replaceChildren(...buildMarkupNodes(doc, segment.children));
+      nodes.push(element);
+    }
+  }
+  return nodes;
+}
+
+function applyMarkup(value, element, doc) {
+  if (!element) return;
+  const source = typeof value === 'string' ? value : String(value ?? '');
+  if (!doc || typeof doc.createElement !== 'function' || typeof doc.createTextNode !== 'function' || typeof element.replaceChildren !== 'function') {
+    // Garde le rendu utilisable dans les environnements DOM minimaux.
+    element.textContent = source;
+    return;
+  }
+  if (!('childNodes' in element) && !('_children' in element)) {
+    // Certains hôtes de test exposent replaceChildren sans arbre DOM : ils
+    // reçoivent le texte brut, sans modifier le comportement applicatif.
+    element.textContent = source;
+    return;
+  }
+  element.replaceChildren(...buildMarkupNodes(doc, parseCollabMarkup(source)));
+}
+
 // Applique le rendu sound_link depuis la liste de segments. JAMAIS d'innerHTML.
-//   [] (vide ou URL simple invalide sans crochet) -> masque le lien (compat
-//      historique : aucun href dangereux créé) ;
+//   valeur vide, URL simple invalide ou texte sans syntaxe -> masque le lien
+//   (compat historique : aucun href dangereux créé) ;
 //   [{ link, label:null, href }] (URL simple historique valide) -> lien
 //      original « En savoir plus » (réutilise els.link) ;
 //   segments multiples (rich) -> TextNode pour 'text', <a> pour 'link', via
@@ -145,9 +294,13 @@ function applyLink(value, els, doc) {
   const segments = parseSoundLink(value);
   const wrap = els.linkWrap;
 
-  if (segments.length === 0) {
-    // Valeur vide OU URL simple invalide (javascript:, data:, etc. sans crochet)
-    // -> masquée (compat historique). Aucun href dangereux créé.
+  const source = typeof value === 'string' ? value : String(value ?? '');
+  const markup = parseCollabMarkup(source);
+  const isForbiddenBareScheme = /^[a-z][a-z0-9+.-]*:/i.test(source.trim()) && !isSafeHttpUrl(source);
+  const hasMarkup = source.includes('[') || markup.some((segment) => segment.type !== 'text');
+  if (source.trim() === '' || isForbiddenBareScheme || (segments.length === 0 && !hasMarkup)) {
+    // Valeur vide, URL simple invalide ou texte sans syntaxe -> masquée.
+    // Les fragments [..]{..} restent en revanche visibles en texte brut.
     if (els.link && els.link.setAttribute) els.link.setAttribute('href', '#');
     if (wrap) wrap.hidden = true;
     if (typeof value === 'string' && value.trim() !== '') {
@@ -175,28 +328,14 @@ function applyLink(value, els, doc) {
     return;
   }
 
-  // Rendu enrichi (un ou plusieurs liens labellisés + texte). Build via APIs DOM.
+  // Rendu enrichi commun à tous les champs. Build via APIs DOM.
   if (!doc || typeof doc.createElement !== 'function' || typeof doc.createTextNode !== 'function') {
     // Environnement sans DOM (ex. test minimal sans doc) : fallback sûr -> masqué.
     if (wrap) wrap.hidden = true;
     return;
   }
-  const parts = [];
-  for (const seg of segments) {
-    if (seg.type === 'link') {
-      const a = doc.createElement('a');
-      a.setAttribute('href', seg.href);
-      a.setAttribute('target', '_blank');
-      a.setAttribute('rel', 'noopener noreferrer');
-      // TextNode : le HTML éventuel du label n'est JAMAIS interprété.
-      a.textContent = seg.label == null ? 'En savoir plus' : seg.label;
-      parts.push(a);
-    } else {
-      parts.push(doc.createTextNode(seg.value));
-    }
-  }
   if (wrap && typeof wrap.replaceChildren === 'function') {
-    wrap.replaceChildren(...parts);
+    wrap.replaceChildren(...buildMarkupNodes(doc, markup));
   }
   if (wrap) wrap.hidden = false;
 }

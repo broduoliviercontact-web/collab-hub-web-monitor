@@ -46,10 +46,23 @@ client ? pass(`module Collab-Hub présent: bpatcher "${client.name}"`) : fail('a
 const printSend = boxes.find(b => b.maxclass === 'newobj' && /print\s+CollabHub-Web-Sender/.test(b.text || ''));
 printSend ? pass('print CollabHub-Web-Sender présent') : fail('print CollabHub-Web-Sender manquant');
 
-// 5. les 5 headers (publish all <header> $1)
+// 5. les 5 headers : tosymbol -> prepend publish all <header>.
+// tosymbol évite que les espaces, crochets et astérisques soient découpés en
+// plusieurs valeurs par Max avant l'envoi à Collab-Hub.
+function formatterForHeader(header) {
+  return boxes.find(b => b.maxclass === 'newobj' && new RegExp(`^prepend publish all ${header}$`).test((b.text || '').trim()));
+}
 for (const h of REQUIRED_HEADERS) {
-  const m = boxes.find(b => b.maxclass === 'message' && new RegExp(`publish all ${h}\\s+\\$1`).test(b.text || ''));
-  m ? pass(`header ${h} présent`) : fail(`header ${h} manquant`);
+  const formatter = formatterForHeader(h);
+  if (!formatter) {
+    fail(`header ${h} manquant`);
+    continue;
+  }
+  const hasToSymbol = lines.some(l => {
+    const source = byId[l.patchline.source[0]];
+    return l.patchline.destination[0] === formatter.id && /^tosymbol$/.test((source?.text || '').trim());
+  });
+  hasToSymbol ? pass(`header ${h} présent (tosymbol + prepend)`) : fail(`${h}: tosymbol manquant avant prepend`);
 }
 
 // 6. bouton global + séquence double passage (register + deliver)
@@ -82,24 +95,25 @@ if (tbb) {
   delayToSend ? pass('delay -> send (livraison retardée)') : fail('delay non câblé vers send');
 }
 
-// 6d. chaque receive -> une value box distincte -> publish ; 5 headers x 2 passages = 10 déclenchements
-const valueBoxes = boxes.filter(b => b.maxclass === 'message' && !/^publish\s+all\s+/.test(b.text || '') && !/^—/.test(b.text || ''));
+// 6d. chaque receive -> une value box distincte -> tosymbol -> publish ;
+// 5 headers x 2 passages = 10 déclenchements.
 let receiveToPublish = 0;
 for (const r of receives) {
   const rDest = destsOf(r.id, 0);
-  const vb = rDest.map(id => byId[id]).find(b => b && b.maxclass === 'message' && !/^publish\s+all\s+/.test(b.text || ''));
+  const vb = rDest.map(id => byId[id]).find(b => b && b.maxclass === 'message' && !/^—/.test(b.text || ''));
   if (vb) {
-    // value box -> publish ?
+    // value box -> tosymbol -> prepend ?
     const vbOuts = destsOf(vb.id, 0);
-    const pub = vbOuts.map(id => byId[id]).find(b => b && /^publish\s+all\s+/.test(b.text || ''));
+    const symbolizer = vbOuts.map(id => byId[id]).find(b => b && b.maxclass === 'newobj' && /^tosymbol$/.test((b.text || '').trim()));
+    const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend publish all sound_/.test((b.text || '').trim()));
     if (pub) receiveToPublish++;
   }
 }
-receiveToPublish === 5 ? pass('5 receive -> value box -> publish (10 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/5 receive câblés vers une publish`);
+receiveToPublish === 5 ? pass('5 receive -> value box -> tosymbol -> publish (10 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/5 receive câblés vers une publication sûre`);
 
-// 7. chaque publish reçoit une valeur ($1) et va vers ch.client + print
+// 7. chaque formatter va vers ch.client + print.
 for (const h of REQUIRED_HEADERS) {
-  const pub = boxes.find(b => b.maxclass === 'message' && new RegExp(`publish all ${h}\\s+\\$1`).test(b.text || ''));
+  const pub = formatterForHeader(h);
   if (!pub) continue;
   const outs = lines.filter(l => l.patchline.source[0] === pub.id).map(l => l.patchline.destination[0]);
   const toClient = outs.some(id => byId[id] && byId[id].maxclass === 'bpatcher' && /ch\.client/i.test(byId[id].name || ''));

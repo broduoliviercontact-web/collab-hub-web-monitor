@@ -45,16 +45,18 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   Serveur par défaut attendu : `https://server.collab-hub.io`, version 0.3.4.
 - **Zone 2 — CHAMPS ÉDITABLES** : cinq lignes (`sound_title`, `sound_author`,
   `sound_subtitle`, `sound_description`, `sound_link`). Chaque ligne : un
-  commentaire (header), une **boîte message** de saisie (valeur entre
-  guillemets), un bouton **Envoyer**, la commande formatée
-  `publish all <header> $1`, et un moniteur « dernier envoi ».
+  commentaire (header), une **boîte message** de saisie, un bouton **Envoyer**,
+  `tosymbol` puis `prepend publish all <header>`, et un moniteur « dernier
+  envoi ». `tosymbol` transforme toute la saisie en une valeur unique avant
+  publication : les espaces et la syntaxe éditoriale du site sont préservés.
 - **Zone 3 — ENVOYER LES 5 CHAMPS** : un bouton global qui, via `t b b`, envoie
   chaque champ **deux fois**. Le trigger `t b b` a deux sorties : la sortie 0
   déclenche le **1er passage (enregistrement)** immédiatement ; la sortie 1 part
   dans un `delay 300` qui déclenche le **2e passage (livraison)** 300 ms plus
   tard. Chaque passage émet un bang dans le send/rceive nommé `ch_pub5`, qui
   est reçu par 5 `receive ch_pub5` (un par header) → chaque receive pousse la
-  valeur courante de sa boîte dans la commande `publish all <header> $1`.
+  valeur courante de sa boîte dans `tosymbol` puis la commande
+  `publish all <header>`.
   C'est le **2e passage** qui déclenche les événements `control` reçus par la
   page web (voir Sémantique). On évite les longs câbles via le couple
   `send ch_pub5` / `receive ch_pub5`.
@@ -92,8 +94,8 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   cliquer **deux fois** pour voir un événement `control` (ou lire la valeur
   dans `observedControls`).
 - `values` est reçu comme un **tableau** contenant un symbole, ex.
-  `["Premier morceau"]`. Les espaces et accents sont conservés tant que la
-  valeur reste un seul symbole Max (guillemets conservés dans la boîte saisie).
+  `["Premier morceau"]`. Les espaces, accents, `*`, crochets et accolades sont
+  conservés par `tosymbol`, même si la boîte message les reçoit comme une liste.
 
 ## Test
 
@@ -113,9 +115,10 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    Le compteur **Contrôles reçus** s'incrémente.
 7. Cliquer **ENVOYER LES 5 CHAMPS** : 5 événements `control` arrivent côté web
    (2e passage). Vérifier le compteur (+5) et la zone diagnostic.
-8. Tester espaces/accents/URL : éditer une boîte saisie (conserver les
-   guillemets), par ex. `"une phrase avec des espaces"`, `"éàü"`,
-   `"https://example.com"`, cliquer **Envoyer** deux fois, vérifier `values`.
+8. Tester espaces/accents et syntaxe web : éditer une boîte saisie, par ex.
+   `une phrase avec des espaces`, `**Concert** [EN DIRECT]{color:red}` ou
+   `[Site artiste]{https://example.com}`, cliquer **Envoyer** deux fois puis
+   vérifier la valeur complète dans `values` et sur la page web.
 9. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
    `connected 0` côté Max, rétablir, renvoyer un champ → nouvel événement.
 
@@ -142,13 +145,13 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   publication fonctionne ; le contrôle publié est visible dans
   `availableControls` puis `observedControls`. La valeur est poussée via
   `control` seulement sur la publication suivante.
-- **Valeurs avec espaces mal découpées** : la boîte saisie doit contenir la
-  valeur **entre guillemets** (`"Premier morceau"`). Sans guillemets, Max
-  découpe sur les espaces et `values` devient plusieurs éléments
-  (ex. `["Premier", "morceau"]`). Conserver les guillemets en éditant.
-- **Apostrophes / accents / URL** : les accents et apostrophes dans un symbole
-  Max entre guillemets sont conservés. Une URL sans espace passe en un seul
-  symbole. Vérifier `values` dans la zone diagnostic web.
+- **Valeur tronquée au premier espace** : vérifier que le câblage passe par
+  `tosymbol` puis `prepend publish all <header>`. Cette version du patch le
+  fait pour les cinq champs ; ne remplacez pas `tosymbol` par une boîte
+  `publish all <header> $1`.
+- **Apostrophes / accents / URL** : les accents, apostrophes, URL et la syntaxe
+  `[libellé]{https://…}` sont conservés comme valeur unique. Vérifier `values`
+  dans la zone diagnostic web.
 - **Reconnexion nécessaire** : après une coupure, le socket se reconnecte
   automatiquement (`reconnection: true` côté web). Si un envoi semble ignoré,
   renvoyer (le 2e passage du bouton global couvre ce cas).

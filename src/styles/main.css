@@ -85,7 +85,8 @@ h1 {
 .link-wrap { margin: 0; }
 .link-wrap[hidden] { display: none; }
 
-#sound-link {
+#sound-link,
+.link-wrap a {
   color: var(--accent);
   text-decoration: none;
   font-size: 0.95rem;
@@ -93,11 +94,27 @@ h1 {
   transition: border-color 150ms ease, color 150ms ease;
   padding: 2px 0;
 }
-#sound-link:hover { border-bottom-color: var(--accent); }
-#sound-link:focus-visible {
+#sound-link:hover,
+.link-wrap a:hover { border-bottom-color: var(--accent); }
+#sound-link:focus-visible,
+.link-wrap a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 2px;
+}
+
+/* Syntaxe éditoriale Collab-Hub : classes émises exclusivement par le rendu DOM. */
+.collab-color--red { color: #ff8a8a; }
+.collab-color--green { color: var(--accent-soft); }
+.collab-color--blue { color: var(--accent); }
+.collab-color--muted { color: var(--text-dim); }
+.collab-color--accent { color: #f2c96d; }
+.collab-paragraph-break { display: block; height: 0.8em; }
+.collab-separator {
+  display: block;
+  width: min(84px, 28%);
+  border-top: 1px solid var(--rule);
+  margin: 0.9em 0;
 }
 
 /* Statut de connexion discret, en pied de page */

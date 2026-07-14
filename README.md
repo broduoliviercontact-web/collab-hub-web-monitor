@@ -44,7 +44,7 @@ src/
 │   ├── persist.js               # persistance locale localStorage (Lot 3A, pur, testable)
 │   └── freshness.js             # état technique fraîcheur + heartbeat (Lot 3B, pur)
 ├── ui/
-│   ├── renderSoundInfo.js       # rendu DOM + sécurité du lien (pur, testable)
+│   ├── renderSoundInfo.js       # rendu DOM + syntaxe éditoriale sûre (pur, testable)
 │   └── renderConnectionStatus.js# indicateur de connexion
 ├── diagnostic/
 │   └── diagnosticPanel.js       # panneau ?debug=1 (chunk dynamique)
@@ -118,15 +118,8 @@ npm run dev                # http://localhost:5173 (ou port suivant)
 4. Cliquer **ENVOYER LES 5 CHAMPS** dans Max.
 5. Vérifier la mise à jour temps réel des trois blocs.
 6. Modifier uniquement le titre dans Max -> seul le titre change sur la page.
-7. Tester une URL valide (`https://…`) -> lien « En savoir plus » ; une URL
-   `javascript:`/vide -> lien masqué. Syntaxe enrichie `sound_link` (Lot 5),
-   un ou plusieurs liens `[label]{url}` par valeur :
-   `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres, et [Music for 88]{https://example.com/music-for-88} est une œuvre.`
-   -> « Tom Johnson » et « Music for 88 » cliquables, texte avant/entre/après
-   normal. `javascript:`/`data:`/`file:` et le HTML reçu ne sont **jamais**
-   interprétés (rendu via TextNode + `<a>`, aucun `innerHTML`) ; un lien
-   invalide parmi plusieurs devient texte brut (le reste est conservé). Voir
-   « sound_link enrichi » ci-dessous.
+7. Tester la syntaxe éditoriale Collab-Hub sur chacun des cinq champs
+   `sound_*`. Voir « Syntaxe éditoriale Collab-Hub » ci-dessous.
 8. Couper puis rétablir le réseau -> la dernière valeur reste affichée, les
    nouvelles valeurs arrivent après reconnexion.
 9. Tester le rendu mobile via les DevTools.
@@ -223,12 +216,11 @@ contenu, puis les publications en temps réel le mettent à jour.
   strictement** la structure. Seuls les cinq headers connus et de type string
   sont restaurés ; tout le reste (JSON corrompu, version inconnue, header
   inconnu, type non string, champ trop long) est **ignoré** → fallback sur les
-  valeurs par défaut. `sound_link` est **repassé par la validation URL
-  existante** au rendu (http/https uniquement, `javascript:`/`data:`/vide →
-  lien masqué). La syntaxe enrichie `[label]{url}` (Lot 5, un ou plusieurs
-  liens par valeur) est elle aussi validée (http/https uniquement ; syntaxe
-  incomplète ou protocole interdit → segment en texte brut non cliquable, le
-  reste de la valeur est conservé, jamais de HTML interprété).
+  valeurs par défaut. Au rendu, les cinq champs passent par la syntaxe
+  éditoriale contrôlée : seuls les liens `http:`/`https:` et les couleurs
+  documentées sont interprétés. Les directives invalides restent du texte brut,
+  sans HTML interprété ; une URL simple dangereuse ou vide dans `sound_link`
+  reste masquée.
 - **Sécurité** : aucune donnée HTML, aucun `innerHTML` (rendu via
   `textContent`/`setAttribute`/`createTextNode`), rien n'est envoyé vers un
   serveur. En cas d'erreur d'accès au storage, l'application ne casse pas.
@@ -336,8 +328,9 @@ npm test          # node --test test/runTests.mjs  (57 tests, zéro dépendance)
 ```
 
 Couvrent : normalisation (tableau 1 ou n éléments, scalaire, absent), routage
-(header inconnu ignoré / connu routé), sécurité du lien (http/https accepté,
-javascript/data/vide refusé), rendu du bon élément, isolation des champs,
+(header inconnu ignoré / connu routé), syntaxe éditoriale sur les cinq champs
+(formatage, liens http/https, couleurs contrôlées, séparateurs et refus
+de HTML/CSS/URL dangereux), rendu du bon élément, isolation des champs,
 état, **observation idempotente** (un header émis une fois par socket.id,
 reset au disconnect, réobservation unique à la reconnexion, un listener par
 événement, `forget` après unobserve), **mode d'auth** (anonymous/guest/
@@ -445,22 +438,27 @@ Collab-Hub (`stream_onair`, `stream_level`, `stream_peak`, `stream_updated_at`,
 valeurs publiques, aucun secret) — indépendant de la connexion listener (moteur
 v1.1.2 et bouton inchangés). Voir `docs/bmad/15-public-stream-status.md`.
 
-**Lot 5 — sound_link enrichi + compteur public d'auditeurs** (additif, aucun
-changement du patch Max ni des 5 champs) :
+**Syntaxe éditoriale Collab-Hub** (issues #2, #4 et #5, additif, aucun
+changement du patch Max ni des cinq champs) :
 
-- **sound_link enrichi** — le header `sound_link` existe toujours ; la page
-  accepte en plus la syntaxe personnalisée `[label]{url}`, avec **un ou
-  plusieurs** liens par valeur et du texte avant/entre/après. Exemple :
-  `[Tom Johnson]{https://en.wikipedia.org/wiki/Tom_Johnson_(composer)} aime les nombres, et [Music for 88]{https://example.com/music-for-88} est une œuvre.`
-  → « Tom Johnson » et « Music for 88 » cliquables, texte intermédiaire normal.
-  Les URL simples historiques (`https://example.com`) restent valides
-  (« En savoir plus »). La syntaxe Markdown `[label](url)` n'est **pas**
-  supportée (ambiguïté avec les parenthèses des URLs). Sécurité : aucun
-  `innerHTML`, HTML reçu jamais interprété (TextNode + `<a>` via APIs DOM),
-  seuls `http:`/`https:` acceptés (`javascript:`/`data:`/`file:` refusés),
-  `target="_blank"` + `rel="noopener noreferrer"`. Un lien invalide parmi
-  plusieurs devient texte brut (le reste de la valeur est conservé). Logique
-  dans `src/ui/renderSoundInfo.js` (`parseSoundLink` → liste de segments).
+Cette syntaxe est disponible dans `sound_title`, `sound_author`,
+`sound_subtitle`, `sound_description` et `sound_link`. Ce n'est **pas du
+Markdown complet** : seuls les formats suivants sont pris en charge.
+
+- `**gras**`, `*italique*` et `` `code` ``.
+- `[libellé]{https://example.com}` pour un lien. Les parenthèses Markdown
+  (`[libellé](url)`) ne sont pas reconnues.
+- `[EN DIRECT]{color:red}` pour une couleur contrôlée. Les seules valeurs sont
+  `red`, `green`, `blue`, `muted` et `accent` ; aucune couleur CSS libre.
+- `|` pour un retour à la ligne, `||` pour un espace de paragraphe et `|||`
+  pour un séparateur visuel.
+
+Une URL simple historique dans `sound_link` (`https://…`) conserve le bouton
+« En savoir plus ». Aucun HTML ou CSS reçu n'est interprété et aucun
+`innerHTML` n'est utilisé. Seuls `http:` et `https:` deviennent cliquables ;
+`javascript:`, `data:`, `file:` et les fragments invalides restent du texte
+brut. Les liens ouvrent dans un nouvel onglet avec `rel="noopener noreferrer"`.
+La logique et les tests se trouvent dans `src/ui/renderSoundInfo.js`.
 
 - **Compteur public d'auditeurs** — la page publique affiche, près du bouton
   « ÉCOUTER LE DIRECT », un indicateur discret : `0 auditeur` / `1 auditeur` /

@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderField, isSafeHttpUrl, parseSoundLink } from '../../src/ui/renderSoundInfo.js';
+import { renderField, isSafeHttpUrl, parseSoundLink, parseCollabMarkup } from '../../src/ui/renderSoundInfo.js';
 import {
   createStreamStatus, routeStreamControl,
   STALE_MS, SIGNAL_THRESHOLD,
@@ -60,6 +60,13 @@ function richDoc() {
 
 function richEls() {
   return { linkWrap: richEl(), link: richEl() };
+}
+
+function richSoundEls() {
+  return {
+    title: richEl(), author: richEl(), subtitle: richEl(), description: richEl(),
+    linkWrap: richEl(), link: richEl(),
+  };
 }
 
 test('isSafeHttpUrl accepte http/https', () => {
@@ -386,6 +393,14 @@ test('sound_link : URL simple invalide (javascript:) -> masqué, href neutre', (
   assert.equal(els.link.getAttribute('href'), '#');
 });
 
+test('sound_link : texte simple non-URL sans syntaxe -> masqué (compat historique)', () => {
+  const doc = richDoc();
+  const els = richEls();
+  renderField('sound_link', 'not a url', els, doc);
+  assert.equal(els.linkWrap.hidden, true);
+  assert.equal(els.link.getAttribute('href'), '#');
+});
+
 // 15c. rendu vide -> masqué
 
 test('sound_link : valeur vide -> lien masqué', () => {
@@ -403,6 +418,56 @@ test('sound_link : compat historique URL simple via renderField', () => {
   renderField('sound_link', 'https://example.com/path?q=1', els, doc);
   assert.equal(els.linkWrap.hidden, false);
   assert.equal(els.link.getAttribute('href'), 'https://example.com/path?q=1');
+});
+
+test('syntaxe Collab-Hub : parse gras, italique, code, lien, couleur et séparateurs', () => {
+  const segments = parseCollabMarkup('**gras** *italique* `code` [site]{https://example.com} [EN DIRECT]{color:red}|ligne||paragraphe|||séparation');
+  assert.deepEqual(segments.map((segment) => segment.type), [
+    'strong', 'text', 'em', 'text', 'code', 'text', 'link', 'text', 'color',
+    'lineBreak', 'text', 'paragraphBreak', 'text', 'separator', 'text',
+  ]);
+  assert.equal(segments[0].children[0].value, 'gras');
+  assert.equal(segments[2].children[0].value, 'italique');
+  assert.equal(segments[4].value, 'code');
+  assert.equal(segments[6].href, 'https://example.com');
+  assert.equal(segments[8].color, 'red');
+});
+
+test('syntaxe Collab-Hub : les cinq champs sound_* rendent le même balisage sûr', () => {
+  const doc = richDoc();
+  const els = richSoundEls();
+  const value = '**Titre** [source]{https://example.com} [EN DIRECT]{color:accent}|suite';
+  const targets = [
+    ['sound_title', els.title], ['sound_author', els.author],
+    ['sound_subtitle', els.subtitle], ['sound_description', els.description],
+    ['sound_link', els.linkWrap],
+  ];
+
+  for (const [header, target] of targets) {
+    renderField(header, value, els, doc);
+    assert.equal(target.hidden, false);
+    assert.equal(target._children.find((child) => child.tagName === 'STRONG')._children[0]._text, 'Titre');
+    const link = target._children.find((child) => child.tagName === 'A');
+    assert.equal(link.getAttribute('href'), 'https://example.com');
+    assert.equal(link.getAttribute('rel'), 'noopener noreferrer');
+    const color = target._children.find((child) => child.getAttribute?.('class') === 'collab-color collab-color--accent');
+    assert.ok(color, `${header} rend la couleur contrôlée`);
+    assert.ok(target._children.some((child) => child.tagName === 'BR'), `${header} rend le séparateur de ligne`);
+  }
+});
+
+test('syntaxe Collab-Hub : CSS libre, URL dangereuse et HTML restent du texte', () => {
+  const raw = '[rouge]{color:#f00} [danger]{javascript:alert(1)} <img src=x onerror=alert(1)>';
+  const segments = parseCollabMarkup(raw);
+  assert.ok(!segments.some((segment) => segment.type === 'color' || segment.type === 'link'));
+  assert.equal(segments.map((segment) => segment.value).join(''), raw);
+
+  const doc = richDoc();
+  const els = richSoundEls();
+  renderField('sound_description', raw, els, doc);
+  assert.equal(els.description._children.length, 1);
+  assert.equal(els.description._children[0].nodeType, 3);
+  assert.equal(els.description._children[0]._text, raw);
 });
 
 
