@@ -49,6 +49,9 @@ function makeDoc() {
   const byId = new Map();
   const getById = (id) => { if (!byId.has(id)) byId.set(id, makeEl()); return byId.get(id); };
   const card = makeEl();
+  card._placements = [];
+  card.insertBefore = (child, anchor) => { card._placements.push(['before', child, anchor]); return child; };
+  card.appendChild = (child) => { card._placements.push(['append', child]); return child; };
   card.parentNode = { insertBefore() {} };
   card.nextSibling = null;
   return {
@@ -232,6 +235,17 @@ test('6b. réception image : affichée sans être persistée avec les textes', a
   conn.getOpts().onControl({ header: 'sound_image_visible', values: 'false' });
   assert.equal(doc.getElementById('sound-image-wrap').hidden, true);
   assert.doesNotThrow(() => conn.getOpts().onControl({ header: 'sound_image_slot', values: 'top' }));
+  r.teardown();
+});
+
+test('6bb. sound_show_name_position déplace le nom sans le persister', async () => {
+  const { conn, storage, doc, r } = mount();
+  await flush();
+  conn.getOpts().onControl({ header: 'sound_show_name_position', values: 'after_author' });
+  assert.deepEqual(doc._card._placements.at(-1), [
+    'before', doc.getElementById('sound-show-name-wrap'), doc.getElementById('sound-subtitle-wrap'),
+  ]);
+  assert.equal(storage.getItem(STORAGE_KEY), null, 'position éphémère : aucun localStorage');
   r.teardown();
 });
 

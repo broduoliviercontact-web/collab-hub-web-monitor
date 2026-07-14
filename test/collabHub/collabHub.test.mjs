@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeValue, routeControl, routeImageControl, routeTextVisibilityControl, IMAGE_HEADERS, KNOWN_HEADERS, OBSERVABLE_HEADERS, TEXT_VISIBILITY_HEADERS } from '../../src/collabHub/messageRouter.js';
+import { normalizeValue, routeControl, routeImageControl, routeShowNamePositionControl, routeTextVisibilityControl, IMAGE_HEADERS, KNOWN_HEADERS, OBSERVABLE_HEADERS, SHOW_NAME_POSITION_HEADERS, TEXT_VISIBILITY_HEADERS } from '../../src/collabHub/messageRouter.js';
 import { createObserveGuard, wireSocket } from '../../src/collabHub/observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from '../../src/collabHub/authMode.js';
 import { fakeSocket } from '../helpers/socket.mjs';
@@ -68,6 +68,15 @@ test('routeTextVisibilityControl route uniquement les 6 préférences texte', ()
   assert.equal(routeTextVisibilityControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
   assert.equal(TEXT_VISIBILITY_HEADERS.length, 6);
   assert.ok(TEXT_VISIBILITY_HEADERS.includes('sound_show_name_visible'));
+});
+
+test('routeShowNamePositionControl route uniquement sound_show_name_position', () => {
+  let received = null;
+  const routed = routeShowNamePositionControl({ header: 'sound_show_name_position', values: ['after_author'] }, (h, v) => { received = { h, v }; });
+  assert.equal(routed, true);
+  assert.deepEqual(received, { h: 'sound_show_name_position', v: 'after_author' });
+  assert.equal(routeShowNamePositionControl({ header: 'sound_title', values: ['top'] }, () => {}), false);
+  assert.deepEqual(SHOW_NAME_POSITION_HEADERS, ['sound_show_name_position']);
 });
 
 // --- Lot 1.1 : observation idempotente (observeGuard / wireSocket) ---

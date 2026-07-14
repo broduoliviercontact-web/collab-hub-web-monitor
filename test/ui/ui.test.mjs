@@ -7,6 +7,7 @@ import { renderField, isSafeHttpUrl, parseSoundLink, parseCollabMarkup } from '.
 import {
   isSafeImageSource, parseImageFit, parseImagePosition, parseImageSize, parseImageSlot, parseImageVisible, placeSoundImage, renderSoundImage,
 } from '../../src/ui/renderSoundImage.js';
+import { parseShowNamePosition, placeShowName } from '../../src/ui/placeShowName.js';
 import { IMAGE_DEFAULTS } from '../../src/state/imageState.js';
 import {
   createStreamStatus, routeStreamControl,
@@ -148,6 +149,30 @@ test('placeSoundImage : sound_image_slot déplace le bloc entre les quatre ancre
   assert.equal(placeSoundImage('bottom', els), 'bottom');
   assert.deepEqual(calls.pop(), ['append', els.wrap]);
   assert.equal(parseImageSlot('not-a-slot'), 'after_subtitle');
+});
+
+test('placeShowName : sound_show_name_position utilise les cinq ancres fermées', () => {
+  const calls = [];
+  const card = {
+    firstChild: { id: 'first-block' },
+    insertBefore: (block, anchor) => calls.push(['before', block, anchor]),
+    appendChild: (block) => calls.push(['append', block]),
+  };
+  const els = {
+    card, showNameSection: { id: 'show' }, titleSection: { id: 'title' }, authorSection: { id: 'author' },
+    subtitleSection: { id: 'subtitle' }, descriptionSection: { id: 'description' },
+  };
+  assert.equal(placeShowName('top', els), 'top');
+  assert.deepEqual(calls.pop(), ['before', els.showNameSection, card.firstChild]);
+  assert.equal(placeShowName('after_title', els), 'after_title');
+  assert.deepEqual(calls.pop(), ['before', els.showNameSection, els.authorSection]);
+  assert.equal(placeShowName('after_author', els), 'after_author');
+  assert.deepEqual(calls.pop(), ['before', els.showNameSection, els.subtitleSection]);
+  assert.equal(placeShowName('after_subtitle', els), 'after_subtitle');
+  assert.deepEqual(calls.pop(), ['before', els.showNameSection, els.descriptionSection]);
+  assert.equal(placeShowName('bottom', els), 'bottom');
+  assert.deepEqual(calls.pop(), ['append', els.showNameSection]);
+  assert.equal(parseShowNamePosition('absolute'), 'top');
 });
 
 // 7. sound_link vide masque le lien
