@@ -520,10 +520,10 @@ test('sound_link : compat historique URL simple via renderField', () => {
   assert.equal(els.link.getAttribute('href'), 'https://example.com/path?q=1');
 });
 
-test('syntaxe Collab-Hub : parse gras, italique, code, lien, couleur et séparateurs', () => {
-  const segments = parseCollabMarkup('**gras** *italique* `code` [site]{https://example.com} [EN DIRECT]{color:red}|ligne||paragraphe|||séparation');
+test('syntaxe Collab-Hub : parse gras, italique, code, lien, couleurs et séparateurs', () => {
+  const segments = parseCollabMarkup('**gras** *italique* `code` [site]{https://example.com} [EN DIRECT]{color:red} [Radio 2]{color:FF6B35}|ligne||paragraphe|||séparation');
   assert.deepEqual(segments.map((segment) => segment.type), [
-    'strong', 'text', 'em', 'text', 'code', 'text', 'link', 'text', 'color',
+    'strong', 'text', 'em', 'text', 'code', 'text', 'link', 'text', 'color', 'text', 'color',
     'lineBreak', 'text', 'paragraphBreak', 'text', 'separator', 'text',
   ]);
   assert.equal(segments[0].children[0].value, 'gras');
@@ -531,6 +531,10 @@ test('syntaxe Collab-Hub : parse gras, italique, code, lien, couleur et séparat
   assert.equal(segments[4].value, 'code');
   assert.equal(segments[6].href, 'https://example.com');
   assert.equal(segments[8].color, 'red');
+  assert.equal(segments[10].hex, '#FF6B35');
+
+  const shortHex = parseCollabMarkup('[court]{color:#f0a}');
+  assert.equal(shortHex[0].hex, '#F0A');
 });
 
 test('syntaxe Collab-Hub : ***texte*** rend gras et italique simultanément', () => {
@@ -564,8 +568,19 @@ test('syntaxe Collab-Hub : les six champs sound_* rendent le même balisage sûr
   }
 });
 
+test('syntaxe Collab-Hub : la couleur hexadécimale est normalisée avant le rendu', () => {
+  const doc = richDoc();
+  const els = richSoundEls();
+  renderField('sound_title', '[Radio 2]{color:FF6B35}', els, doc);
+
+  const color = els.title._children.find((child) => child.getAttribute?.('class') === 'collab-color');
+  assert.ok(color);
+  assert.equal(color.getAttribute('style'), 'color:#FF6B35');
+  assert.equal(color._children[0]._text, 'Radio 2');
+});
+
 test('syntaxe Collab-Hub : CSS libre, URL dangereuse et HTML restent du texte', () => {
-  const raw = '[rouge]{color:#f00} [danger]{javascript:alert(1)} <img src=x onerror=alert(1)>';
+  const raw = '[rouge]{color:FF6B35;background:red} [danger]{javascript:alert(1)} <img src=x onerror=alert(1)>';
   const segments = parseCollabMarkup(raw);
   assert.ok(!segments.some((segment) => segment.type === 'color' || segment.type === 'link'));
   assert.equal(segments.map((segment) => segment.value).join(''), raw);

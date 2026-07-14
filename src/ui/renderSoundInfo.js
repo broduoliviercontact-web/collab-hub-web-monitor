@@ -100,6 +100,20 @@ export function parseSoundLink(value) {
 // Ce n'est volontairement PAS du Markdown complet : seul ce petit sous-ensemble
 // éditorial est reconnu et chaque autre caractère reste du texte littéral.
 const COLOR_TOKENS = new Set(['red', 'green', 'blue', 'muted', 'accent']);
+const HEX_COLOR_RE = /^(?:#)?([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+// Accepte exclusivement les couleurs de palette ou un code hexadécimal court
+// ou long. La valeur normalisée est ensuite la seule écrite dans le style DOM.
+function parseCollabColor(directive) {
+  const raw = directive.match(/^color:(.+)$/i)?.[1]?.trim();
+  if (!raw) return null;
+
+  const named = raw.toLowerCase();
+  if (COLOR_TOKENS.has(named)) return { color: named, hex: null };
+
+  const hex = raw.match(HEX_COLOR_RE)?.[1]?.toUpperCase();
+  return hex ? { color: null, hex: `#${hex}` } : null;
+}
 
 function pushText(segments, value) {
   if (value === '') return;
@@ -149,9 +163,9 @@ export function parseCollabMarkup(value) {
             i = directiveEnd + 1;
             continue;
           }
-          const color = directive.match(/^color:(red|green|blue|muted|accent)$/i)?.[1]?.toLowerCase();
-          if (label.trim() !== '' && COLOR_TOKENS.has(color)) {
-            segments.push({ type: 'color', color, children: parseCollabMarkup(label) });
+          const parsedColor = parseCollabColor(directive);
+          if (label.trim() !== '' && parsedColor) {
+            segments.push({ type: 'color', ...parsedColor, children: parseCollabMarkup(label) });
             i = directiveEnd + 1;
             continue;
           }
@@ -278,7 +292,10 @@ function buildMarkupNodes(doc, segments) {
     } else {
       const tag = segment.type === 'strong' ? 'strong' : segment.type === 'em' ? 'em' : 'span';
       const element = doc.createElement(tag);
-      if (segment.type === 'color') element.setAttribute('class', `collab-color collab-color--${segment.color}`);
+      if (segment.type === 'color') {
+        element.setAttribute('class', segment.color ? `collab-color collab-color--${segment.color}` : 'collab-color');
+        if (segment.hex) element.setAttribute('style', `color:${segment.hex}`);
+      }
       element.replaceChildren(...buildMarkupNodes(doc, segment.children));
       nodes.push(element);
     }
