@@ -460,8 +460,11 @@ réglages d'image.
 - `**gras**`, `*italique*`, `***gras et italique***` et `` `code` ``.
 - `[libellé]{https://example.com}` pour un lien. Les parenthèses Markdown
   (`[libellé](url)`) ne sont pas reconnues.
-- `[EN DIRECT]{color:red}` pour une couleur contrôlée. Les seules valeurs sont
-  `red`, `green`, `blue`, `muted` et `accent` ; aucune couleur CSS libre.
+- `[EN DIRECT]{color:red}` pour une couleur de la palette contrôlée. Les valeurs
+  disponibles sont `red`, `green`, `blue`, `muted` et `accent`.
+- `[Radio 2]{color:FF6B35}` pour une couleur hexadécimale précise. Les formats
+  `RGB` et `RRGGBB` sont acceptés, avec ou sans `#`. Aucune directive CSS libre
+  n'est interprétée.
 - `|` pour un retour à la ligne, `||` pour un espace de paragraphe et `|||`
   pour un séparateur visuel.
 

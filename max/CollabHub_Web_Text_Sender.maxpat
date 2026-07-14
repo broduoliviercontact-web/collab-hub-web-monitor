@@ -1344,7 +1344,7 @@
         "box": { "id": "obj-140", "maxclass": "comment", "numinlets": 1, "numoutlets": 0, "patching_rect": [20, 1850, 180, 22], "text": "sound_show_name" }
       },
       {
-        "box": { "id": "obj-141", "maxclass": "message", "numinlets": 2, "numoutlets": 1, "outlettype": [""], "patching_rect": [210, 1850, 300, 22], "text": "Radio 2" }
+        "box": { "id": "obj-141", "maxclass": "message", "numinlets": 2, "numoutlets": 1, "outlettype": [""], "patching_rect": [210, 1850, 300, 22], "text": "[Radio 2]{color:FF6B35}" }
       },
       {
         "box": { "id": "obj-142", "maxclass": "newobj", "numinlets": 1, "numoutlets": 1, "outlettype": [""], "patching_rect": [530, 1850, 100, 22], "text": "tosymbol" }

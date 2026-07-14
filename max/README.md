@@ -153,7 +153,8 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    (2e passage). Vérifier le compteur (+6), le nom du show au-dessus du titre
    et la zone diagnostic.
 8. Tester espaces/accents et syntaxe web : éditer une boîte saisie, par ex.
-   `une phrase avec des espaces`, `**Concert** [EN DIRECT]{color:red}` ou
+   `une phrase avec des espaces`, `**Concert** [EN DIRECT]{color:red}`,
+   `[Radio 2]{color:FF6B35}` ou
    `[Site artiste]{https://example.com}`, cliquer **Envoyer** deux fois puis
    vérifier la valeur complète dans `values` et sur la page web.
 9. Descendre à **IMAGE DE PROGRAMME**, garder l'URL exemple ou saisir une URL
