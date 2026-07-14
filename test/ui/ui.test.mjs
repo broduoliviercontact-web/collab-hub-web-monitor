@@ -433,6 +433,14 @@ test('syntaxe Collab-Hub : parse gras, italique, code, lien, couleur et séparat
   assert.equal(segments[8].color, 'red');
 });
 
+test('syntaxe Collab-Hub : ***texte*** rend gras et italique simultanément', () => {
+  const segments = parseCollabMarkup('***Concert***');
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].type, 'strong');
+  assert.equal(segments[0].children[0].type, 'em');
+  assert.equal(segments[0].children[0].children[0].value, 'Concert');
+});
+
 test('syntaxe Collab-Hub : les cinq champs sound_* rendent le même balisage sûr', () => {
   const doc = richDoc();
   const els = richSoundEls();

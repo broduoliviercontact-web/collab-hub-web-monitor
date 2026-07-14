@@ -104,6 +104,7 @@ h1 {
 }
 
 /* Syntaxe éditoriale Collab-Hub : classes émises exclusivement par le rendu DOM. */
+main.card strong { font-weight: 750; }
 .collab-color--red { color: #ff8a8a; }
 .collab-color--green { color: var(--accent-soft); }
 .collab-color--blue { color: var(--accent); }

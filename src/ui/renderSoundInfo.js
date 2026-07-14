@@ -163,6 +163,17 @@ export function parseCollabMarkup(value) {
       }
     }
 
+    if (source.startsWith('***', i)) {
+      const end = findClosing(source, '***', i + 3);
+      if (end !== -1) {
+        segments.push({
+          type: 'strong',
+          children: [{ type: 'em', children: parseCollabMarkup(source.slice(i + 3, end)) }],
+        });
+        i = end + 3;
+        continue;
+      }
+    }
     if (source.startsWith('**', i)) {
       const end = findClosing(source, '**', i + 2);
       if (end !== -1) {
