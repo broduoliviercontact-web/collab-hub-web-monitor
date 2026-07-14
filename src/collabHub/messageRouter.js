@@ -33,6 +33,10 @@ export const TEXT_VISIBILITY_HEADERS = [
   'sound_link_visible',
 ];
 
+// Position éphémère du nom d'émission. Elle emploie les mêmes cinq ancres que
+// l'image, sans modifier sa valeur ou sa visibilité.
+export const SHOW_NAME_POSITION_HEADERS = ['sound_show_name_position'];
+
 // Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler
 // son activité. Jamais affiché comme contenu, jamais persisté.
 export const HEARTBEAT_HEADER = 'sound_heartbeat';
@@ -53,7 +57,8 @@ export const STREAM_HEADERS = [
 
 // Tous les headers à observer au démarrage : contenus, image éphémère et heartbeat.
 export const OBSERVABLE_HEADERS = [
-  ...KNOWN_HEADERS, ...IMAGE_HEADERS, ...TEXT_VISIBILITY_HEADERS, HEARTBEAT_HEADER,
+  ...KNOWN_HEADERS, ...IMAGE_HEADERS, ...TEXT_VISIBILITY_HEADERS,
+  ...SHOW_NAME_POSITION_HEADERS, HEARTBEAT_HEADER,
 ];
 
 // Normalise data.values en chaîne.
@@ -91,6 +96,14 @@ export function routeTextVisibilityControl(data, onUpdate) {
   if (!data || typeof data !== 'object') return false;
   const { header } = data;
   if (!TEXT_VISIBILITY_HEADERS.includes(header)) return false;
+  onUpdate(header, normalizeValue(data.values));
+  return true;
+}
+
+export function routeShowNamePositionControl(data, onUpdate) {
+  if (!data || typeof data !== 'object') return false;
+  const { header } = data;
+  if (!SHOW_NAME_POSITION_HEADERS.includes(header)) return false;
   onUpdate(header, normalizeValue(data.values));
   return true;
 }

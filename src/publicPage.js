@@ -21,6 +21,7 @@ import { createListenerRuntime } from './public/publicListenerRuntime.js';
 import { createStreamRuntime } from './public/publicStreamRuntime.js';
 import { createContentRuntime } from './public/publicContentRuntime.js';
 import { createImageRuntime } from './public/publicImageRuntime.js';
+import { createShowNamePositionRuntime } from './public/publicShowNameRuntime.js';
 import { createTextVisibilityRuntime } from './public/publicTextVisibilityRuntime.js';
 import { createCollabHubRuntime } from './public/publicCollabHubRuntime.js';
 
@@ -126,6 +127,14 @@ export function mountPublicPage(deps = {}) {
     },
   });
 
+  const showNamePosition = createShowNamePositionRuntime({
+    els: {
+      card: els.card, showNameSection: els.showNameSection,
+      titleSection: els.titleSection, authorSection: els.authorSection,
+      subtitleSection: els.subtitleSection, descriptionSection: els.descriptionSection,
+    },
+  });
+
   // Préférences afficher/masquer, éphémères comme l'image et sans incidence
   // sur le contenu persistant envoyé par Max.
   const textVisibility = createTextVisibilityRuntime({
@@ -178,7 +187,7 @@ export function mountPublicPage(deps = {}) {
   // referont le pont vers le reste (statut public, montage diag).
   const collab = createCollabHubRuntime({
     connect, serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE,
-    stream, content, image, textVisibility, diag, dbg,
+    stream, content, image, showNamePosition, textVisibility, diag, dbg,
     recomputePublicState, renderStreamState, onError,
     onConnected: (api) => {
       const diagOpts = {

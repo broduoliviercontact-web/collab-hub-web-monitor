@@ -103,10 +103,15 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   TEXTE** emploie `send/receive ch_vis6` avec le
   même double passage que les autres groupes. Ces préférences sont éphémères :
   elles reviennent à `true` après un rechargement de la page.
-- **Zone 6 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
+- **Zone 6 — POSITION NOM D'ÉMISSION** : `sound_show_name_position` accepte
+  `top`, `after_title`, `after_author`, `after_subtitle` ou `bottom`.
+  `top` place le nom tout en haut de la carte, même devant une image placée en
+  haut. **ENVOYER POSITION NOM D'ÉMISSION** utilise `send/receive ch_showpos1`
+  et le même double passage register/deliver.
+- **Zone 7 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
-- **Zone 7 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
+- **Zone 8 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
   tant que le CH-Client est connecté. `connected` (sortie 1 de
   `route serverMessage connected`) pilote un `toggle` qui démarre/arrête
   `metro 10000` ; chaque tick -> `push all sound_heartbeat 1` vers
@@ -168,7 +173,11 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
     `sound_subtitle_visible`, `sound_description_visible` et
     `sound_link_visible`. Avec `sound_show_name_visible`, envoyer d'abord le
     nom d'émission, sinon le bloc reste volontairement caché.
-11. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
+11. Descendre à **POSITION NOM D'ÉMISSION** : essayer successivement `top`,
+    `after_title`, `after_author`, `after_subtitle` et `bottom`, puis cliquer
+    **ENVOYER POSITION NOM D'ÉMISSION**. Avec une image en `top`, vérifier que
+    le nom reste vraiment le premier bloc de la carte.
+12. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
    `connected 0` côté Max, rétablir, renvoyer un champ → nouvel événement.
 
 ## Dépannage

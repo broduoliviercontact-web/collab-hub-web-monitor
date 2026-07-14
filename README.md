@@ -452,6 +452,11 @@ Envoyer `true` les affiche et `false` les masque sans effacer leur valeur.
 `sound_show_name_visible true` reste masqué tant qu'aucun nom d'émission n'est
 renseigné.
 
+`sound_show_name_position` choisit son emplacement : `top` (tout en haut de la
+carte, avant une image placée en haut), `after_title`, `after_author`,
+`after_subtitle` ou `bottom`. Cette préférence est éphémère, comme les
+réglages d'image.
+
 - `**gras**`, `*italique*`, `***gras et italique***` et `` `code` ``.
 - `[libellé]{https://example.com}` pour un lien. Les parenthèses Markdown
   (`[libellé](url)`) ne sont pas reconnues.
