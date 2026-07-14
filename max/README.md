@@ -47,7 +47,7 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
 - **Zone 2 — CHAMPS ÉDITABLES** : cinq lignes (`sound_title`, `sound_author`,
   `sound_subtitle`, `sound_description`, `sound_link`). Chaque ligne : un
   commentaire (header), une **boîte message** de saisie, un bouton **Envoyer**,
-  `tosymbol` puis `prepend publish all <header>`, et un moniteur « dernier
+  `tosymbol` puis `prepend push all <header>`, et un moniteur « dernier
   envoi ». `tosymbol` transforme toute la saisie en une valeur unique avant
   publication : les espaces et la syntaxe éditoriale du site sont préservés.
 - **Zone 3 — ENVOYER LES 5 CHAMPS** : un bouton global qui, via `t b b`, envoie
@@ -57,7 +57,7 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   tard. Chaque passage émet un bang dans le send/rceive nommé `ch_pub5`, qui
   est reçu par 5 `receive ch_pub5` (un par header) → chaque receive pousse la
   valeur courante de sa boîte dans `tosymbol` puis la commande
-  `publish all <header>`.
+  `push all <header>`.
   C'est le **2e passage** qui déclenche les événements `control` reçus par la
   page web (voir Sémantique). On évite les longs câbles via le couple
   `send ch_pub5` / `receive ch_pub5`.
@@ -92,7 +92,7 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
 - **Zone 6 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
   tant que le CH-Client est connecté. `connected` (sortie 1 de
   `route serverMessage connected`) pilote un `toggle` qui démarre/arrête
-  `metro 10000` ; chaque tick -> `publish all sound_heartbeat 1` vers
+  `metro 10000` ; chaque tick -> `push all sound_heartbeat 1` vers
   `ch.client` + `print`. À la connexion, `sel 1` -> `t b b` -> `delay 300`
   envoie un heartbeat immédiat (register) puis un second 300 ms plus tard
   (deliver) pour que la page web voit Max actif dès ~0,3 s. Ce heartbeat est un
@@ -104,14 +104,9 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   Ils **ne se voient pas**. Le CH-Client Max utilise le namespace fixé par
   `config.json` du package (**défaut `hub`**). La page web **doit utiliser le
   même** : `.env` à la racine → `VITE_COLLAB_HUB_NAMESPACE=hub`.
-- En mode `publish`, la **1re publication d'un header l'enregistre seulement**
-  (il apparaît dans `availableControls`/`observedControls` avec sa valeur) ;
-  elle **ne pousse pas** d'événement `control` aux observateurs. Seule une
-  publication **suivante** déclenche l'événement `control`
-  `{from, header, values}` côté observateur. C'est pourquoi le bouton global
-  envoie chaque champ deux fois. Avec un bouton **Envoyer** individuel, il faut
-  cliquer **deux fois** pour voir un événement `control` (ou lire la valeur
-  dans `observedControls`).
+- En mode `push`, les valeurs sont envoyées aux observateurs via un événement
+  `control` `{from, header, values}`. Le bouton global conserve deux passages
+  espacés de 300 ms pour un test robuste après connexion ou reconnexion.
 - `values` est reçu comme un **tableau** contenant un symbole, ex.
   `["Premier morceau"]`. Les espaces, accents, `*`, crochets et accolades sont
   conservés par `tosymbol`, même si la boîte message les reçoit comme une liste.
@@ -174,9 +169,9 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   `availableControls` puis `observedControls`. La valeur est poussée via
   `control` seulement sur la publication suivante.
 - **Valeur tronquée au premier espace** : vérifier que le câblage passe par
-  `tosymbol` puis `prepend publish all <header>`. Cette version du patch le
+  `tosymbol` puis `prepend push all <header>`. Cette version du patch le
   fait pour les cinq champs ; ne remplacez pas `tosymbol` par une boîte
-  `publish all <header> $1`.
+  `push all <header> $1`.
 - **Apostrophes / accents / URL** : les accents, apostrophes, URL et la syntaxe
   `[libellé]{https://…}` sont conservés comme valeur unique. Vérifier `values`
   dans la zone diagnostic web.
@@ -201,6 +196,6 @@ déclenchements), du groupe image `send ch_img7` + 7 `receive ch_img7` (double
 passage, 14 déclenchements), un bouton par envoi global, l'absence de l'ancien
 `pipe 0 50 100 150 200`, **et (Lot 3B)** le header technique `sound_heartbeat`,
 `metro 10000`, le démarrage/arrêt du metro par `connected`, le câblage du
-publish heartbeat vers `ch.client` + `print`, et l'absence de `$1` sur le
+push heartbeat vers `ch.client` + `print`, et l'absence de `$1` sur le
 heartbeat. La clé de connexion est `lines` (conforme aux patches officiels
 Collab-Hub `ch.client.maxpat` / `simple.maxpat`), non `patchlines`.

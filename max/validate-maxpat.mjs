@@ -50,11 +50,11 @@ client ? pass(`module Collab-Hub présent: bpatcher "${client.name}"`) : fail('a
 const printSend = boxes.find(b => b.maxclass === 'newobj' && /print\s+CollabHub-Web-Sender/.test(b.text || ''));
 printSend ? pass('print CollabHub-Web-Sender présent') : fail('print CollabHub-Web-Sender manquant');
 
-// 5. les 5 headers : tosymbol -> prepend publish all <header>.
+// 5. les 5 headers : tosymbol -> prepend push all <header>.
 // tosymbol évite que les espaces, crochets et astérisques soient découpés en
 // plusieurs valeurs par Max avant l'envoi à Collab-Hub.
 function formatterForHeader(header) {
-  return boxes.find(b => b.maxclass === 'newobj' && new RegExp(`^prepend publish all ${header}$`).test((b.text || '').trim()));
+  return boxes.find(b => b.maxclass === 'newobj' && new RegExp(`^prepend push all ${header}$`).test((b.text || '').trim()));
 }
 for (const h of REQUIRED_HEADERS) {
   const formatter = formatterForHeader(h);
@@ -114,7 +114,7 @@ if (tbb) {
   delayToSend ? pass('delay -> send (livraison retardée)') : fail('delay non câblé vers send');
 }
 
-// 6d. chaque receive -> une value box distincte -> tosymbol -> publish ;
+// 6d. chaque receive -> une value box distincte -> tosymbol -> push ;
 // 5 headers x 2 passages = 10 déclenchements.
 let receiveToPublish = 0;
 for (const r of receives) {
@@ -124,11 +124,11 @@ for (const r of receives) {
     // value box -> tosymbol -> prepend ?
     const vbOuts = destsOf(vb.id, 0);
     const symbolizer = vbOuts.map(id => byId[id]).find(b => b && b.maxclass === 'newobj' && /^tosymbol$/.test((b.text || '').trim()));
-    const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend publish all sound_/.test((b.text || '').trim()));
+    const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend push all sound_/.test((b.text || '').trim()));
     if (pub) receiveToPublish++;
   }
 }
-receiveToPublish === 5 ? pass('5 receive -> value box -> tosymbol -> publish (10 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/5 receive câblés vers une publication sûre`);
+receiveToPublish === 5 ? pass('5 receive -> value box -> tosymbol -> push (10 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/5 receive câblés vers un push sûr`);
 
 // Groupe image indépendant : six valeurs, même double passage register/deliver.
 const IMAGE_SEND_NAME = 'ch_img7';
@@ -146,10 +146,10 @@ let imageReceiveToPublish = 0;
 for (const r of imageReceives) {
   const valueBox = destsOf(r.id, 0).map(id => byId[id]).find(b => b && b.maxclass === 'message');
   const symbolizer = valueBox && destsOf(valueBox.id, 0).map(id => byId[id]).find(b => b && /^tosymbol$/.test((b.text || '').trim()));
-  const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend publish all sound_image_/.test((b.text || '').trim()));
+  const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend push all sound_image_/.test((b.text || '').trim()));
   if (pub) imageReceiveToPublish++;
 }
-imageReceiveToPublish === 7 ? pass('7 receive image -> value box -> tosymbol -> publish (14 déclenchements sur 2 passages)') : fail(`${imageReceiveToPublish}/7 receive image câblés vers une publication sûre`);
+imageReceiveToPublish === 7 ? pass('7 receive image -> value box -> tosymbol -> push (14 déclenchements sur 2 passages)') : fail(`${imageReceiveToPublish}/7 receive image câblés vers un push sûr`);
 
 // 7. chaque formatter va vers ch.client + print.
 for (const h of REQUIRED_HEADERS) {
@@ -158,8 +158,8 @@ for (const h of REQUIRED_HEADERS) {
   const outs = lines.filter(l => l.patchline.source[0] === pub.id).map(l => l.patchline.destination[0]);
   const toClient = outs.some(id => byId[id] && byId[id].maxclass === 'bpatcher' && /ch\.client/i.test(byId[id].name || ''));
   const toPrint = outs.some(id => byId[id] && /print\s+CollabHub-Web-Sender/.test(byId[id].text || ''));
-  if (!toClient) fail(`${h}: publish non câblé vers ch.client`);
-  if (!toPrint) fail(`${h}: publish non câblé vers print CollabHub-Web-Sender`);
+  if (!toClient) fail(`${h}: push non câblé vers ch.client`);
+  if (!toPrint) fail(`${h}: push non câblé vers print CollabHub-Web-Sender`);
 }
 for (const h of IMAGE_HEADERS) {
   const pub = formatterForHeader(h);
@@ -167,8 +167,8 @@ for (const h of IMAGE_HEADERS) {
   const outs = lines.filter(l => l.patchline.source[0] === pub.id).map(l => l.patchline.destination[0]);
   const toClient = outs.some(id => byId[id] && byId[id].maxclass === 'bpatcher' && /ch\.client/i.test(byId[id].name || ''));
   const toPrint = outs.some(id => byId[id] && /print\s+CollabHub-Web-Sender/.test(byId[id].text || ''));
-  if (!toClient) fail(`${h}: publish non câblé vers ch.client`);
-  if (!toPrint) fail(`${h}: publish non câblé vers print CollabHub-Web-Sender`);
+  if (!toClient) fail(`${h}: push non câblé vers ch.client`);
+  if (!toPrint) fail(`${h}: push non câblé vers print CollabHub-Web-Sender`);
 }
 
 // 8. boutons individuels conservés (un par header -> value box)
@@ -177,8 +177,8 @@ indButtons.length >= 1 ? pass(`${indButtons.length} bouton(s) (global + individu
 
 // 9. HEARTBEAT (Lot 3B) : sound_heartbeat, metro 10000, start/stop sur connected
 const HB = 'sound_heartbeat';
-const hbPub = boxes.find(b => b.maxclass === 'message' && new RegExp(`^publish all ${HB}\\s+1$`).test((b.text || '').trim()));
-hbPub ? pass('header technique sound_heartbeat (publish all sound_heartbeat 1)') : fail('publish all sound_heartbeat 1 manquant');
+const hbPub = boxes.find(b => b.maxclass === 'message' && new RegExp(`^push all ${HB}\\s+1$`).test((b.text || '').trim()));
+hbPub ? pass('header technique sound_heartbeat (push all sound_heartbeat 1)') : fail('push all sound_heartbeat 1 manquant');
 const metro = boxes.find(b => b.maxclass === 'newobj' && /^metro\s+10000$/.test((b.text || '').trim()));
 metro ? pass('metro 10000 présent') : fail('metro 10000 manquant (fréquence heartbeat 10 s)');
 // connected vient de "route serverMessage connected" (outlet 1) -> un newobj route ... connected
@@ -198,18 +198,18 @@ if (routeConn && metro) {
   });
   drivesMetro ? pass('connected (route out1) pilote le metro (via toggle ou direct)') : fail('connected ne démarre/arrête pas le metro');
 }
-// le publish heartbeat va vers ch.client + print (comme les contenus)
+// le push heartbeat va vers ch.client + print (comme les contenus)
 if (hbPub) {
   const outs = lines.filter(l => l.patchline.source[0] === hbPub.id).map(l => l.patchline.destination[0]);
   const toClient = outs.some(id => byId[id] && byId[id].maxclass === 'bpatcher' && /ch\.client/i.test(byId[id].name || ''));
   const toPrint = outs.some(id => byId[id] && /print\s+CollabHub-Web-Sender/.test(byId[id].text || ''));
-  if (!toClient) fail('sound_heartbeat publish non câblé vers ch.client');
-  if (!toPrint) fail('sound_heartbeat publish non câblé vers print CollabHub-Web-Sender');
-  if (toClient && toPrint) pass('sound_heartbeat publish -> ch.client + print');
+  if (!toClient) fail('sound_heartbeat push non câblé vers ch.client');
+  if (!toPrint) fail('sound_heartbeat push non câblé vers print CollabHub-Web-Sender');
+  if (toClient && toPrint) pass('sound_heartbeat push -> ch.client + print');
 }
-// sound_heartbeat ne doit PAS apparaître parmi les publish de contenu ($1)
-const hbAsContent = boxes.find(b => b.maxclass === 'message' && /publish all sound_heartbeat \$1/.test(b.text || ''));
-hbAsContent ? fail('sound_heartbeat ne doit pas utiliser $1 (valeur constante 1)') : pass('sound_heartbeat publié en valeur constante (pas $1)');
+// sound_heartbeat ne doit PAS apparaître parmi les push de contenu ($1)
+const hbAsContent = boxes.find(b => b.maxclass === 'message' && /push all sound_heartbeat \$1/.test(b.text || ''));
+hbAsContent ? fail('sound_heartbeat ne doit pas utiliser $1 (valeur constante 1)') : pass('sound_heartbeat poussé en valeur constante (pas $1)');
 
 console.log(ok ? '\nVALIDATION OK ✅' : '\nVALIDATION ÉCHEC ❌');
 process.exit(ok ? 0 : 1);

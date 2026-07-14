@@ -137,7 +137,7 @@ La page distingue trois choses : la **connexion au serveur** Collab-Hub, la
 **activité réelle du patch Max** (heartbeat), et l'**ancienneté du contenu**
 affiché.
 
-- **Heartbeat Max** : le patch publie `publish all sound_heartbeat 1` toutes
+- **Heartbeat Max** : le patch envoie `push all sound_heartbeat 1` toutes
   les 10 s, uniquement tant que le CH-Client est connecté (zone `HEARTBEAT` du
   patch, `metro 10000` piloté par `connected`). C'est un **header technique** :
   jamais affiché comme contenu, jamais persisté, ne déclenche pas l'animation
