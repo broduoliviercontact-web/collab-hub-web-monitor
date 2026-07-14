@@ -3,6 +3,7 @@
 import { TEXT_VISIBILITY_HEADERS } from '../collabHub/messageRouter.js';
 
 export const TEXT_VISIBILITY_DEFAULTS = {
+  sound_show_name_visible: 'true',
   sound_title_visible: 'true',
   sound_author_visible: 'true',
   sound_subtitle_visible: 'true',

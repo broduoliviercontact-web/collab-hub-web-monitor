@@ -22,9 +22,10 @@ export const IMAGE_HEADERS = [
   'sound_image_slot',
 ];
 
-// Préférences d'affichage éphémères des cinq champs de contenu. Elles ne
+// Préférences d'affichage éphémères des six champs de contenu. Elles ne
 // changent jamais le contenu et ne doivent pas être stockées localement.
 export const TEXT_VISIBILITY_HEADERS = [
+  'sound_show_name_visible',
   'sound_title_visible',
   'sound_author_visible',
   'sound_subtitle_visible',

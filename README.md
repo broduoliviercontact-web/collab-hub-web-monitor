@@ -445,6 +445,13 @@ Cette syntaxe est disponible dans `sound_show_name`, `sound_title`,
 `sound_author`, `sound_subtitle`, `sound_description` et `sound_link`. Ce n'est **pas du
 Markdown complet** : seuls les formats suivants sont pris en charge.
 
+Les six contenus peuvent aussi être masqués temporairement depuis Max avec
+`sound_show_name_visible`, `sound_title_visible`, `sound_author_visible`,
+`sound_subtitle_visible`, `sound_description_visible` et `sound_link_visible`.
+Envoyer `true` les affiche et `false` les masque sans effacer leur valeur.
+`sound_show_name_visible true` reste masqué tant qu'aucun nom d'émission n'est
+renseigné.
+
 - `**gras**`, `*italique*`, `***gras et italique***` et `` `code` ``.
 - `[libellé]{https://example.com}` pour un lien. Les parenthèses Markdown
   (`[libellé](url)`) ne sont pas reconnues.

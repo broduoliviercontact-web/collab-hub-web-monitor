@@ -12,7 +12,7 @@ const IMAGE_HEADERS = [
   'sound_image_height', 'sound_image_fit', 'sound_image_position', 'sound_image_slot',
 ];
 const TEXT_VISIBILITY_HEADERS = [
-  'sound_title_visible', 'sound_author_visible', 'sound_subtitle_visible',
+  'sound_show_name_visible', 'sound_title_visible', 'sound_author_visible', 'sound_subtitle_visible',
   'sound_description_visible', 'sound_link_visible',
 ];
 
@@ -168,17 +168,17 @@ for (const r of imageReceives) {
 }
 imageReceiveToPublish === 7 ? pass('7 receive image -> value box -> tosymbol -> push (14 déclenchements sur 2 passages)') : fail(`${imageReceiveToPublish}/7 receive image câblés vers un push sûr`);
 
-// Groupe visibilité texte : cinq valeurs, même double passage register/deliver.
-const TEXT_VISIBILITY_SEND_NAME = 'ch_vis5';
+// Groupe visibilité texte : six valeurs, même double passage register/deliver.
+const TEXT_VISIBILITY_SEND_NAME = 'ch_vis6';
 const textVisibilitySends = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^send\\s+${TEXT_VISIBILITY_SEND_NAME}$`).test((b.text || '').trim()));
 const textVisibilityReceives = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^receive\\s+${TEXT_VISIBILITY_SEND_NAME}$`).test((b.text || '').trim()));
 textVisibilitySends.length === 1 ? pass(`send ${TEXT_VISIBILITY_SEND_NAME} présent (1)`) : fail(`send ${TEXT_VISIBILITY_SEND_NAME} attendu unique, trouvé ${textVisibilitySends.length}`);
-textVisibilityReceives.length === 5 ? pass(`5 receive ${TEXT_VISIBILITY_SEND_NAME} (un par préférence)`) : fail(`5 receive ${TEXT_VISIBILITY_SEND_NAME} attendus, trouvé ${textVisibilityReceives.length}`);
+textVisibilityReceives.length === 6 ? pass(`6 receive ${TEXT_VISIBILITY_SEND_NAME} (un par préférence)`) : fail(`6 receive ${TEXT_VISIBILITY_SEND_NAME} attendus, trouvé ${textVisibilityReceives.length}`);
 const textVisibilityTrigger = boxes.find(b => b.maxclass === 'newobj' && /^t b b$/.test((b.text || '').trim())
   && destsOf(b.id, 0).some(id => textVisibilitySends.some(s => s.id === id)));
 const textVisibilityDelay = textVisibilityTrigger && destsOf(textVisibilityTrigger.id, 1).map(id => byId[id]).find(b => b && /^delay\s+300$/.test((b.text || '').trim()));
-if (!textVisibilityTrigger) fail('trigger visibilité t b b -> send ch_vis5 manquant');
-else if (!textVisibilityDelay || !destsOf(textVisibilityDelay.id, 0).some(id => textVisibilitySends.some(s => s.id === id))) fail('double passage visibilité (delay 300 -> send ch_vis5) manquant');
+if (!textVisibilityTrigger) fail('trigger visibilité t b b -> send ch_vis6 manquant');
+else if (!textVisibilityDelay || !destsOf(textVisibilityDelay.id, 0).some(id => textVisibilitySends.some(s => s.id === id))) fail('double passage visibilité (delay 300 -> send ch_vis6) manquant');
 else pass('double passage visibilité texte register/deliver présent');
 let textVisibilityReceiveToPublish = 0;
 for (const r of textVisibilityReceives) {
@@ -187,7 +187,7 @@ for (const r of textVisibilityReceives) {
   const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend push all sound_.*_visible$/.test((b.text || '').trim()));
   if (pub) textVisibilityReceiveToPublish++;
 }
-textVisibilityReceiveToPublish === 5 ? pass('5 receive visibilité -> value box -> tosymbol -> push (10 déclenchements sur 2 passages)') : fail(`${textVisibilityReceiveToPublish}/5 receive visibilité câblés vers un push sûr`);
+textVisibilityReceiveToPublish === 6 ? pass('6 receive visibilité -> value box -> tosymbol -> push (12 déclenchements sur 2 passages)') : fail(`${textVisibilityReceiveToPublish}/6 receive visibilité câblés vers un push sûr`);
 
 // 7. chaque formatter va vers ch.client + print.
 for (const h of REQUIRED_HEADERS) {

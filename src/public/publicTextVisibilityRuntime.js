@@ -1,4 +1,4 @@
-// Runtime des cinq préférences d'affichage texte, indépendant du contenu et de
+// Runtime des six préférences d'affichage texte, indépendant du contenu et de
 // sa persistance. Une nouvelle valeur texte repasse ici pour respecter un champ
 // déjà masqué ; réactiver un lien relance son rendu sûr avant de l'afficher.
 import { routeTextVisibilityControl } from '../collabHub/messageRouter.js';
@@ -15,9 +15,10 @@ export function createTextVisibilityRuntime({ els }) {
       return routeTextVisibilityControl(data, (header, value) => {
         state.set(header, value);
         const contentHeader = contentHeaderForVisibility(header);
-        // Le lien décide lui-même s'il est valide/vide : on le rerend avant de
-        // lever son masquage explicite afin de ne jamais révéler un lien vide.
-        if (parseTextVisible(value) && contentHeader === 'sound_link') rerenderContent(contentHeader);
+        // Le lien et le nom du show décident eux-mêmes s'ils ont une valeur : on
+        // les rerend avant de lever leur masquage explicite pour ne jamais
+        // révéler de conteneur vide.
+        if (parseTextVisible(value) && ['sound_link', 'sound_show_name'].includes(contentHeader)) rerenderContent(contentHeader);
         renderTextVisibility(state.snapshot(), els, contentHeader);
       });
     },

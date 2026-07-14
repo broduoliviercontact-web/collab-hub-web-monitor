@@ -94,11 +94,13 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   `sound_image_slot` déplace le bloc image : `top` (avant le titre),
   `after_title` (entre titre et auteur), `after_author` (après l'auteur),
   `after_subtitle` (après le sous-titre) ou `bottom` (après la description).
-- **Zone 5 — VISIBILITÉ DES TEXTES** : cinq boîtes message pilotent
-  `sound_title_visible`, `sound_author_visible`, `sound_subtitle_visible`,
-  `sound_description_visible` et `sound_link_visible`. Envoyer `true` (ou `1`)
-  affiche le champ ; `false` (ou `0`) le masque sans supprimer son contenu.
-  **ENVOYER LES 5 VISIBILITÉS TEXTE** emploie `send/receive ch_vis5` avec le
+- **Zone 5 — VISIBILITÉ DES TEXTES** : six boîtes message pilotent
+  `sound_show_name_visible`, `sound_title_visible`, `sound_author_visible`,
+  `sound_subtitle_visible`, `sound_description_visible` et `sound_link_visible`.
+  Envoyer `true` (ou `1`) affiche le champ ; `false` (ou `0`) le masque sans
+  supprimer son contenu. Un `sound_show_name_visible true` ne révèle le bloc
+  que si `sound_show_name` contient une valeur. **ENVOYER LES 6 VISIBILITÉS
+  TEXTE** emploie `send/receive ch_vis6` avec le
   même double passage que les autres groupes. Ces préférences sont éphémères :
   elles reviennent à `true` après un rechargement de la page.
 - **Zone 6 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
@@ -159,11 +161,13 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    `/images/collab-hub-image-test.svg` : il fonctionne en local et sur chaque
    déploiement Vercel, sans modifier l'URL dans Max.
 10. Descendre à **VISIBILITÉ DES TEXTES** : saisir `false` dans
-    `sound_title_visible`, cliquer **ENVOYER LES 5 VISIBILITÉS TEXTE** et
+    `sound_show_name_visible` ou `sound_title_visible`, cliquer
+    **ENVOYER LES 6 VISIBILITÉS TEXTE** et
     vérifier que seul le titre disparaît. Repasser à `true` : le même titre
     réapparaît sans devoir le renvoyer. Répéter avec `sound_author_visible`,
     `sound_subtitle_visible`, `sound_description_visible` et
-    `sound_link_visible`.
+    `sound_link_visible`. Avec `sound_show_name_visible`, envoyer d'abord le
+    nom d'émission, sinon le bloc reste volontairement caché.
 11. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
    `connected 0` côté Max, rétablir, renvoyer un champ → nouvel événement.
 

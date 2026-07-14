@@ -251,6 +251,15 @@ test('6c. visibilité des textes : masque sans effacer et reste hors localStorag
   assert.equal(doc.getElementById('sound-link-wrap').hidden, true);
   conn.getOpts().onControl({ header: 'sound_link_visible', values: 'true' });
   assert.equal(doc.getElementById('sound-link-wrap').hidden, false);
+
+  conn.getOpts().onControl({ header: 'sound_show_name', values: 'Radio 2' });
+  conn.getOpts().onControl({ header: 'sound_show_name_visible', values: 'false' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, true);
+  assert.equal(doc.getElementById('sound-show-name').textContent, 'Radio 2');
+  conn.getOpts().onControl({ header: 'sound_show_name_visible', values: 'true' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, false);
+  conn.getOpts().onControl({ header: 'sound_show_name', values: '' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, true, 'true ne révèle pas un nom d émission vide');
   r.teardown();
 });
 

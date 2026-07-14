@@ -60,13 +60,14 @@ test('routeImageControl route uniquement les 7 headers image', () => {
   assert.equal(IMAGE_HEADERS.length, 7);
 });
 
-test('routeTextVisibilityControl route uniquement les 5 préférences texte', () => {
+test('routeTextVisibilityControl route uniquement les 6 préférences texte', () => {
   let received = null;
   const routed = routeTextVisibilityControl({ header: 'sound_title_visible', values: ['false'] }, (h, v) => { received = { h, v }; });
   assert.equal(routed, true);
   assert.deepEqual(received, { h: 'sound_title_visible', v: 'false' });
   assert.equal(routeTextVisibilityControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
-  assert.equal(TEXT_VISIBILITY_HEADERS.length, 5);
+  assert.equal(TEXT_VISIBILITY_HEADERS.length, 6);
+  assert.ok(TEXT_VISIBILITY_HEADERS.includes('sound_show_name_visible'));
 });
 
 // --- Lot 1.1 : observation idempotente (observeGuard / wireSocket) ---

@@ -130,6 +130,7 @@ export function mountPublicPage(deps = {}) {
   // sur le contenu persistant envoyé par Max.
   const textVisibility = createTextVisibilityRuntime({
     els: {
+      showNameSection: els.showNameSection, showName: els.showName,
       titleSection: els.titleSection, authorSection: els.authorSection,
       subtitleSection: els.subtitleSection, descriptionSection: els.descriptionSection,
       linkWrap: els.linkWrap,
