@@ -1,6 +1,7 @@
 # CollabHub_Web_Text_Sender — patch Max émetteur de test (Lot 0C)
 
-Patch Max **autonome** pour publier les cinq champs du site vers Collab-Hub,
+Patch Max **autonome** pour publier les cinq champs du site et les six contrôles
+d'image vers Collab-Hub,
 afin de tester la réception côté client web (à la racine du projet).
 
 Fichier : `max/CollabHub_Web_Text_Sender.maxpat`
@@ -67,10 +68,28 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   > header publié par passage (2 au lieu de 10). Le send/receive + `delay 300`
   > garantit que les **5** headers partent à **chaque** passage, dans un ordre
   > déterministe, sans envoi parasite.
-- **Zone 4 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
+- **Zone 4 — IMAGE DE PROGRAMME** (issue #26) : six boîtes message contrôlent
+  `sound_image_url`, `sound_image_visible`, `sound_image_width`,
+  `sound_image_height`, `sound_image_fit`, `sound_image_position` et
+  `sound_image_slot`. Cliquer
+  une boîte publie son champ ; **ENVOYER LES 6 CHAMPS IMAGE** utilise
+  `send/receive ch_img7` et le même double passage register/deliver. Les
+  valeurs par défaut sont une URL exemple, `true`, `100%`, `auto`, `contain`
+  et `center`.
+
+  Côté web, les URL `http(s)` et les chemins locaux sûrs `/images/...` sont
+  affichés. Les tailles admises sont
+  `auto`, `px` jusqu'à 1600, `%`, `vw` ou `vh` jusqu'à 100 ; le cadrage accepte
+  `contain`, `cover`, `fill`, `none`, `scale-down`, et la position accepte le
+  centre, les bords ou les coins. Une valeur invalide retombe sur une valeur
+  sûre. L'image est éphémère : elle n'est jamais sauvegardée dans le navigateur.
+  `sound_image_slot` déplace le bloc image : `top` (avant le titre),
+  `after_title` (entre titre et auteur), `after_author` (après l'auteur),
+  `after_subtitle` (après le sous-titre) ou `bottom` (après la description).
+- **Zone 5 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
-- **Zone 5 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
+- **Zone 6 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
   tant que le CH-Client est connecté. `connected` (sortie 1 de
   `route serverMessage connected`) pilote un `toggle` qui démarre/arrête
   `metro 10000` ; chaque tick -> `publish all sound_heartbeat 1` vers
@@ -119,7 +138,16 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    `une phrase avec des espaces`, `**Concert** [EN DIRECT]{color:red}` ou
    `[Site artiste]{https://example.com}`, cliquer **Envoyer** deux fois puis
    vérifier la valeur complète dans `values` et sur la page web.
-9. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
+9. Descendre à **IMAGE DE PROGRAMME**, garder l'URL exemple ou saisir une URL
+   `https://...`, puis cliquer **ENVOYER LES 6 CHAMPS IMAGE**. Vérifier
+   l'affichage, tester `cover`, `top right`, puis `false` dans
+   `sound_image_visible`. Tester aussi `sound_image_slot` avec `top`,
+   `after_title`, `after_author`, `after_subtitle` et `bottom`. Une nouvelle
+   URL doit remplacer l'image.
+   Le visuel versionné de test peut être appelé avec
+   `/images/collab-hub-image-test.svg` : il fonctionne en local et sur chaque
+   déploiement Vercel, sans modifier l'URL dans Max.
+10. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
    `connected 0` côté Max, rétablir, renvoyer un champ → nouvel événement.
 
 ## Dépannage
@@ -166,9 +194,11 @@ node max/validate-maxpat.mjs
 
 Vérifie : JSON valide, ids uniques, `lines` vers objets existants et
 inlets/outlets dans les limites, présence du bpatcher `ch.client.maxpat`, des
-5 headers, de `print CollabHub-Web-Sender`, du `t b b`, du `send ch_pub5` +
+5 headers éditoriaux et 7 headers image, de `print CollabHub-Web-Sender`, du
+`t b b`, du `send ch_pub5` +
 `delay 300` + 5 `receive ch_pub5` (double passage register/deliver, 10
-déclenchements), un bouton par header, l'absence de l'ancien
+déclenchements), du groupe image `send ch_img7` + 7 `receive ch_img7` (double
+passage, 14 déclenchements), un bouton par envoi global, l'absence de l'ancien
 `pipe 0 50 100 150 200`, **et (Lot 3B)** le header technique `sound_heartbeat`,
 `metro 10000`, le démarrage/arrêt du metro par `connected`, le câblage du
 publish heartbeat vers `ch.client` + `print`, et l'absence de `$1` sur le

@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeValue, routeControl, KNOWN_HEADERS } from '../../src/collabHub/messageRouter.js';
+import { normalizeValue, routeControl, routeImageControl, IMAGE_HEADERS, KNOWN_HEADERS } from '../../src/collabHub/messageRouter.js';
 import { createObserveGuard, wireSocket } from '../../src/collabHub/observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from '../../src/collabHub/authMode.js';
 import { fakeSocket } from '../helpers/socket.mjs';
@@ -49,6 +49,15 @@ test('routeControl route les headers connus avec valeur normalisée', () => {
 
 test('KNOWN_HEADERS contient exactement les 5 headers', () => {
   assert.deepEqual(KNOWN_HEADERS, ['sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link']);
+});
+
+test('routeImageControl route uniquement les 7 headers image', () => {
+  let received = null;
+  const routed = routeImageControl({ header: 'sound_image_url', values: ['https://example.com/image.png'] }, (h, v) => { received = { h, v }; });
+  assert.equal(routed, true);
+  assert.deepEqual(received, { h: 'sound_image_url', v: 'https://example.com/image.png' });
+  assert.equal(routeImageControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
+  assert.equal(IMAGE_HEADERS.length, 7);
 });
 
 // --- Lot 1.1 : observation idempotente (observeGuard / wireSocket) ---
@@ -123,13 +132,13 @@ test('wireSocket : un listener par event, réobservation idempotente sur reconne
   for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'control']) {
     assert.equal(sock.listenerCount(e), 1, `listener unique pour ${e}`);
   }
-  sock.fire('connect');            // connexion initiale -> 6 émissions (5 contenus + heartbeat)
-  assert.equal(emitted.length, 6);
+  sock.fire('connect');            // contenus, image éphémère, slot et heartbeat
+  assert.equal(emitted.length, 13);
   sock.fire('reconnect');          // déclenche aussi connect ensuite -> déjà observé
-  assert.equal(emitted.length, 6);
+  assert.equal(emitted.length, 13);
   sock.fire('disconnect');         // vide le guard
-  sock.fire('connect');            // reconnect -> 6 nouvelles
-  assert.equal(emitted.length, 12);
+  sock.fire('connect');            // reconnect -> 13 nouvelles
+  assert.equal(emitted.length, 26);
 });
 
 // 16. forget() permet de réobserver après un unobserve explicite

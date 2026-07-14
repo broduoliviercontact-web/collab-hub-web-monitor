@@ -7,6 +7,10 @@ import { dirname, join } from 'path';
 const here = dirname(fileURLToPath(import.meta.url));
 const file = join(here, 'CollabHub_Web_Text_Sender.maxpat');
 const REQUIRED_HEADERS = ['sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link'];
+const IMAGE_HEADERS = [
+  'sound_image_url', 'sound_image_visible', 'sound_image_width',
+  'sound_image_height', 'sound_image_fit', 'sound_image_position', 'sound_image_slot',
+];
 
 let j;
 try { j = JSON.parse(readFileSync(file, 'utf8')); }
@@ -65,6 +69,21 @@ for (const h of REQUIRED_HEADERS) {
   hasToSymbol ? pass(`header ${h} présent (tosymbol + prepend)`) : fail(`${h}: tosymbol manquant avant prepend`);
 }
 
+// Les contrôles image empruntent le même chemin de transport sûr. Le rendu web
+// applique ensuite des listes fermées pour dimensions, cadrage et position.
+for (const h of IMAGE_HEADERS) {
+  const formatter = formatterForHeader(h);
+  if (!formatter) {
+    fail(`header image ${h} manquant`);
+    continue;
+  }
+  const hasToSymbol = lines.some(l => {
+    const source = byId[l.patchline.source[0]];
+    return l.patchline.destination[0] === formatter.id && /^tosymbol$/.test((source?.text || '').trim());
+  });
+  hasToSymbol ? pass(`header image ${h} présent (tosymbol + prepend)`) : fail(`${h}: tosymbol manquant avant prepend`);
+}
+
 // 6. bouton global + séquence double passage (register + deliver)
 const tbb = boxes.find(b => b.maxclass === 'newobj' && /^t b b$/.test((b.text || '').trim()));
 tbb ? pass('trigger "t b b" présent') : fail('trigger "t b b" manquant');
@@ -111,8 +130,38 @@ for (const r of receives) {
 }
 receiveToPublish === 5 ? pass('5 receive -> value box -> tosymbol -> publish (10 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/5 receive câblés vers une publication sûre`);
 
+// Groupe image indépendant : six valeurs, même double passage register/deliver.
+const IMAGE_SEND_NAME = 'ch_img7';
+const imageSends = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^send\\s+${IMAGE_SEND_NAME}$`).test((b.text || '').trim()));
+const imageReceives = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^receive\\s+${IMAGE_SEND_NAME}$`).test((b.text || '').trim()));
+imageSends.length === 1 ? pass(`send ${IMAGE_SEND_NAME} présent (1)`) : fail(`send ${IMAGE_SEND_NAME} attendu unique, trouvé ${imageSends.length}`);
+imageReceives.length === 7 ? pass(`7 receive ${IMAGE_SEND_NAME} (un par header image)`) : fail(`7 receive ${IMAGE_SEND_NAME} attendus, trouvé ${imageReceives.length}`);
+const imageTrigger = boxes.find(b => b.maxclass === 'newobj' && /^t b b$/.test((b.text || '').trim())
+  && destsOf(b.id, 0).some(id => imageSends.some(s => s.id === id)));
+const imageDelay = imageTrigger && destsOf(imageTrigger.id, 1).map(id => byId[id]).find(b => b && /^delay\s+300$/.test((b.text || '').trim()));
+if (!imageTrigger) fail('trigger image t b b -> send ch_img7 manquant');
+else if (!imageDelay || !destsOf(imageDelay.id, 0).some(id => imageSends.some(s => s.id === id))) fail('double passage image (delay 300 -> send ch_img7) manquant');
+else pass('double passage image register/deliver présent');
+let imageReceiveToPublish = 0;
+for (const r of imageReceives) {
+  const valueBox = destsOf(r.id, 0).map(id => byId[id]).find(b => b && b.maxclass === 'message');
+  const symbolizer = valueBox && destsOf(valueBox.id, 0).map(id => byId[id]).find(b => b && /^tosymbol$/.test((b.text || '').trim()));
+  const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend publish all sound_image_/.test((b.text || '').trim()));
+  if (pub) imageReceiveToPublish++;
+}
+imageReceiveToPublish === 7 ? pass('7 receive image -> value box -> tosymbol -> publish (14 déclenchements sur 2 passages)') : fail(`${imageReceiveToPublish}/7 receive image câblés vers une publication sûre`);
+
 // 7. chaque formatter va vers ch.client + print.
 for (const h of REQUIRED_HEADERS) {
+  const pub = formatterForHeader(h);
+  if (!pub) continue;
+  const outs = lines.filter(l => l.patchline.source[0] === pub.id).map(l => l.patchline.destination[0]);
+  const toClient = outs.some(id => byId[id] && byId[id].maxclass === 'bpatcher' && /ch\.client/i.test(byId[id].name || ''));
+  const toPrint = outs.some(id => byId[id] && /print\s+CollabHub-Web-Sender/.test(byId[id].text || ''));
+  if (!toClient) fail(`${h}: publish non câblé vers ch.client`);
+  if (!toPrint) fail(`${h}: publish non câblé vers print CollabHub-Web-Sender`);
+}
+for (const h of IMAGE_HEADERS) {
   const pub = formatterForHeader(h);
   if (!pub) continue;
   const outs = lines.filter(l => l.patchline.source[0] === pub.id).map(l => l.patchline.destination[0]);

@@ -19,7 +19,7 @@
 // par publicPage. Attache uniquement onAny + les événements Collab-Hub connus +
 // les événements socket riches (connect/disconnect/connect_error/reconnect) pour
 // les stats d'exploitation (listeners uniques).
-import { KNOWN_HEADERS, STREAM_HEADERS } from '../collabHub/messageRouter.js';
+import { IMAGE_HEADERS, KNOWN_HEADERS, STREAM_HEADERS } from '../collabHub/messageRouter.js';
 import { HEARTBEAT_HEADER } from '../state/freshness.js';
 import { createBoundedEventLog } from './boundedEventLog.js';
 import { deriveSystemHealth, HEALTH } from './systemHealth.js';
@@ -31,7 +31,7 @@ import { buildDiagnosticExport } from './diagnosticExport.js';
 import { getListenerNetworkStats } from './networkStats.js';
 
 const el = (root, id) => root.querySelector(`#${id}`);
-const ALL_TABLE_HEADERS = [...KNOWN_HEADERS, HEARTBEAT_HEADER, ...STREAM_HEADERS];
+const ALL_TABLE_HEADERS = [...KNOWN_HEADERS, ...IMAGE_HEADERS, HEARTBEAT_HEADER, ...STREAM_HEADERS];
 
 export function initDiagnostic(api, root, opts = {}) {
   if (!api || !api.socket || !root) return null;

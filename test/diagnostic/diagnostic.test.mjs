@@ -296,9 +296,9 @@ test('ops : LiveKit inactif quand désactivé', () => {
 
 // --- 13/14/15/16 : tableau des headers ---
 
-test('ops : table contient tous les headers attendus (11)', () => {
+test('ops : table contient tous les headers attendus (18)', () => {
   const rows = deriveHeadersTable({ stats: {}, observed: new Set(HEADERS_TABLE), now: () => 1000 });
-  assert.equal(rows.length, 11);
+  assert.equal(rows.length, 18);
   assert.deepEqual(rows.map((r) => r.header), HEADERS_TABLE);
   // Tous observés et jamais reçus -> JAMAIS REÇU.
   assert.ok(rows.every((r) => r.observed && r.status === HEADER_STATUS.JAMAIS_RECU));

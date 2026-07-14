@@ -5,6 +5,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderField, isSafeHttpUrl, parseSoundLink, parseCollabMarkup } from '../../src/ui/renderSoundInfo.js';
 import {
+  isSafeImageSource, parseImageFit, parseImagePosition, parseImageSize, parseImageSlot, parseImageVisible, placeSoundImage, renderSoundImage,
+} from '../../src/ui/renderSoundImage.js';
+import {
   createStreamStatus, routeStreamControl,
   STALE_MS, SIGNAL_THRESHOLD,
   STREAM_STATUS, STREAM_SIGNAL,
@@ -82,6 +85,62 @@ test('isSafeHttpUrl refuse javascript:, data:, vide, non-URL', () => {
   assert.equal(isSafeHttpUrl(''), false);
   assert.equal(isSafeHttpUrl('   '), false);
   assert.equal(isSafeHttpUrl('not a url'), false);
+});
+
+test('renderSoundImage : URL sûre, visibilité et cadrage sont appliqués sans CSS libre', () => {
+  const els = { wrap: fakeEl(), image: fakeEl() };
+  const shown = renderSoundImage({
+    sound_image_url: 'https://example.com/image.png', sound_image_visible: 'true',
+    sound_image_width: '640px', sound_image_height: '40vh',
+    sound_image_fit: 'cover', sound_image_position: 'top right',
+  }, els);
+  assert.equal(shown, true);
+  assert.equal(els.wrap.hidden, false);
+  assert.equal(els.image.getAttribute('src'), 'https://example.com/image.png');
+  assert.equal(els.image.getAttribute('style'), 'width:640px;height:40vh;object-fit:cover;object-position:top right');
+  assert.equal(parseImageVisible('off'), false);
+  assert.equal(parseImageSize('url(evil)', '100%'), '100%');
+  assert.equal(parseImageFit('expression(evil)'), 'contain');
+  assert.equal(parseImagePosition('left; color:red'), 'center');
+});
+
+test('renderSoundImage : URL interdite ou image masquée retire la source', () => {
+  const els = { wrap: fakeEl(), image: fakeEl() };
+  assert.equal(renderSoundImage({ sound_image_url: 'javascript:alert(1)', sound_image_visible: 'true' }, els), false);
+  assert.equal(els.wrap.hidden, true);
+  assert.equal(els.image.getAttribute('src'), '');
+});
+
+test('renderSoundImage : chemin public /images sûr accepté, autres chemins relatifs refusés', () => {
+  const els = { wrap: fakeEl(), image: fakeEl() };
+  assert.equal(isSafeImageSource('/images/collab-hub-image-test.svg'), true);
+  assert.equal(isSafeImageSource('/images/../secret.png'), false);
+  assert.equal(isSafeImageSource('/assets/cover.png'), false);
+  assert.equal(renderSoundImage({ sound_image_url: '/images/collab-hub-image-test.svg', sound_image_visible: 'true' }, els), true);
+  assert.equal(els.image.getAttribute('src'), '/images/collab-hub-image-test.svg');
+});
+
+test('placeSoundImage : sound_image_slot déplace le bloc entre les quatre ancres', () => {
+  const calls = [];
+  const card = {
+    insertBefore: (wrap, anchor) => calls.push(['before', wrap, anchor]),
+    appendChild: (wrap) => calls.push(['append', wrap]),
+  };
+  const els = {
+    card, wrap: { id: 'image' }, titleSection: { id: 'title' }, authorSection: { id: 'author' },
+    subtitleSection: { id: 'subtitle' }, descriptionSection: { id: 'description' },
+  };
+  assert.equal(placeSoundImage('top', els), 'top');
+  assert.deepEqual(calls.pop(), ['before', els.wrap, els.titleSection]);
+  assert.equal(placeSoundImage('after_title', els), 'after_title');
+  assert.deepEqual(calls.pop(), ['before', els.wrap, els.authorSection]);
+  assert.equal(placeSoundImage('after_author', els), 'after_author');
+  assert.deepEqual(calls.pop(), ['before', els.wrap, els.subtitleSection]);
+  assert.equal(placeSoundImage('after_subtitle', els), 'after_subtitle');
+  assert.deepEqual(calls.pop(), ['before', els.wrap, els.descriptionSection]);
+  assert.equal(placeSoundImage('bottom', els), 'bottom');
+  assert.deepEqual(calls.pop(), ['append', els.wrap]);
+  assert.equal(parseImageSlot('not-a-slot'), 'after_subtitle');
 });
 
 // 7. sound_link vide masque le lien

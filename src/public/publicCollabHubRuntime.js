@@ -10,7 +10,7 @@
 // via collab.getApi() ; le montage diag est orchestré par la racine via onConnected.
 export function createCollabHubRuntime({
   connect, serverUrl, namespace, username, authMode,
-  stream, content, diag, dbg = () => {},
+  stream, content, image, diag, dbg = () => {},
   recomputePublicState, renderStreamState, onConnected = () => {}, onError,
 }) {
   let collabApi = null;
@@ -26,6 +26,11 @@ export function createCollabHubRuntime({
       recomputePublicState();
       diag.logControl(data);
       diag.refreshStream();
+      return;
+    }
+    if (image && image.applyControl(data)) {
+      dbg('received image control', data.header, data.values);
+      diag.logControl(data);
       return;
     }
     // applyControl rend, rafraîchit la fraîcheur, persiste ; retourne le timestamp
