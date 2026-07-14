@@ -52,6 +52,17 @@ main.card {
 }
 .block:last-child { border-bottom: none; }
 .block--subtitle { background: var(--bg-block-2); }
+.block--title { padding-bottom: 8px; border-bottom: none; }
+.block--author { padding-top: 8px; }
+.block--image[hidden] { display: none; }
+#sound-image {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--bg);
+}
 
 h1 {
   margin: 0 0 8px;

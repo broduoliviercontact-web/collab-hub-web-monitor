@@ -38,7 +38,7 @@ function makeEl() {
     classList: { add() {}, remove() {}, contains() { return false; } },
     setAttribute(k, v) { this._attrs[k] = v; },
     getAttribute(k) { return this._attrs[k]; },
-    appendChild(c) { return c; }, append(...c) { return c; }, replaceChildren() {},
+    appendChild(c) { return c; }, append(...c) { return c; }, insertBefore(c) { return c; }, replaceChildren() {},
     addEventListener(ev, cb) { (handlers[ev] ||= []).push(cb); },
     removeEventListener() {},
     _fire(ev, ...a) { (handlers[ev] || []).forEach((cb) => cb(...a)); },
@@ -206,6 +206,20 @@ test('6. réception stream_* : routé vers streamStatus, non persisté comme con
   // stream_* nest pas un KNOWN_HEADER -> pas de persistance son, pas de rendu contenu.
   assert.equal(storage.getItem(STORAGE_KEY), null);
   assert.equal(doc.getElementById('sound-title').textContent, DEFAULTS.sound_title);
+  r.teardown();
+});
+
+test('6b. réception image : affichée sans être persistée avec les textes', async () => {
+  const { conn, storage, doc, r } = mount();
+  await flush();
+  conn.getOpts().onControl({ header: 'sound_image_url', values: 'https://example.com/visuel.png' });
+  const image = doc.getElementById('sound-image');
+  assert.equal(image.getAttribute('src'), 'https://example.com/visuel.png');
+  assert.equal(doc.getElementById('sound-image-wrap').hidden, false);
+  assert.equal(storage.getItem(STORAGE_KEY), null, 'image éphémère : aucun localStorage');
+  conn.getOpts().onControl({ header: 'sound_image_visible', values: 'false' });
+  assert.equal(doc.getElementById('sound-image-wrap').hidden, true);
+  assert.doesNotThrow(() => conn.getOpts().onControl({ header: 'sound_image_slot', values: 'top' }));
   r.teardown();
 });
 

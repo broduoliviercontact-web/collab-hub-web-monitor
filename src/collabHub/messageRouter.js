@@ -8,6 +8,19 @@ export const KNOWN_HEADERS = [
   'sound_link',
 ];
 
+// Headers visuels éphémères (issue #26). Ils sont observés comme les contenus,
+// mais restent hors de KNOWN_HEADERS : aucune image ni préférence d'affichage ne
+// doit être restaurée ou écrite dans localStorage.
+export const IMAGE_HEADERS = [
+  'sound_image_url',
+  'sound_image_visible',
+  'sound_image_width',
+  'sound_image_height',
+  'sound_image_fit',
+  'sound_image_position',
+  'sound_image_slot',
+];
+
 // Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler
 // son activité. Jamais affiché comme contenu, jamais persisté.
 export const HEARTBEAT_HEADER = 'sound_heartbeat';
@@ -26,8 +39,8 @@ export const STREAM_HEADERS = [
   'stream_listener_count',
 ];
 
-// Tous les headers à observer au démarrage : 5 contenus + le heartbeat.
-export const OBSERVABLE_HEADERS = [...KNOWN_HEADERS, HEARTBEAT_HEADER];
+// Tous les headers à observer au démarrage : contenus, image éphémère et heartbeat.
+export const OBSERVABLE_HEADERS = [...KNOWN_HEADERS, ...IMAGE_HEADERS, HEARTBEAT_HEADER];
 
 // Normalise data.values en chaîne.
 // - tableau -> join(' ')
@@ -45,6 +58,15 @@ export function routeControl(data, onUpdate) {
   if (!data || typeof data !== 'object') return false;
   const { header } = data;
   if (!KNOWN_HEADERS.includes(header)) return false;
+  onUpdate(header, normalizeValue(data.values));
+  return true;
+}
+
+// Route un contrôle d'image sans le mélanger aux cinq contenus persistés.
+export function routeImageControl(data, onUpdate) {
+  if (!data || typeof data !== 'object') return false;
+  const { header } = data;
+  if (!IMAGE_HEADERS.includes(header)) return false;
   onUpdate(header, normalizeValue(data.values));
   return true;
 }

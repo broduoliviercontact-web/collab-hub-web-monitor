@@ -20,6 +20,7 @@ import { createDiagnosticsRuntime } from './public/publicDiagnosticsRuntime.js';
 import { createListenerRuntime } from './public/publicListenerRuntime.js';
 import { createStreamRuntime } from './public/publicStreamRuntime.js';
 import { createContentRuntime } from './public/publicContentRuntime.js';
+import { createImageRuntime } from './public/publicImageRuntime.js';
 import { createCollabHubRuntime } from './public/publicCollabHubRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
@@ -82,12 +83,18 @@ export function mountPublicPage(deps = {}) {
   // --- Refs DOM ---
   const els = {
     card: doc.querySelector('main.card'),
+    titleSection: doc.getElementById('sound-title-wrap'),
+    authorSection: doc.getElementById('sound-author-wrap'),
     title: doc.getElementById('sound-title'),
     author: doc.getElementById('sound-author'),
     subtitle: doc.getElementById('sound-subtitle'),
+    subtitleSection: doc.getElementById('sound-subtitle-wrap'),
     description: doc.getElementById('sound-description'),
+    descriptionSection: doc.getElementById('sound-description-wrap'),
     linkWrap: doc.getElementById('sound-link-wrap'),
     link: doc.getElementById('sound-link'),
+    imageWrap: doc.getElementById('sound-image-wrap'),
+    image: doc.getElementById('sound-image'),
     statusText: doc.getElementById('status-text'),
     statusDot: doc.getElementById('status-dot'),
   };
@@ -101,6 +108,16 @@ export function mountPublicPage(deps = {}) {
     storage, now,
   });
   const freshness = content.freshness;
+
+  // Image de programme (issue #26) : état transitoire, sans localStorage ni
+  // impact sur la fraîcheur des cinq champs éditoriaux.
+  const image = createImageRuntime({
+    els: {
+      card: els.card, wrap: els.imageWrap, image: els.image,
+      titleSection: els.titleSection, authorSection: els.authorSection,
+      subtitleSection: els.subtitleSection, descriptionSection: els.descriptionSection,
+    },
+  });
 
   // --- État de flux direct (Lot 4G) : statut public AVANT connexion LiveKit ---
   // La logique métier (streamStatus, observation des headers stream_*, routage,
@@ -143,7 +160,7 @@ export function mountPublicPage(deps = {}) {
   // referont le pont vers le reste (statut public, montage diag).
   const collab = createCollabHubRuntime({
     connect, serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE,
-    stream, content, diag, dbg,
+    stream, content, image, diag, dbg,
     recomputePublicState, renderStreamState, onError,
     onConnected: (api) => {
       const diagOpts = {
