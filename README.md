@@ -445,7 +445,7 @@ Cette syntaxe est disponible dans `sound_title`, `sound_author`,
 `sound_subtitle`, `sound_description` et `sound_link`. Ce n'est **pas du
 Markdown complet** : seuls les formats suivants sont pris en charge.
 
-- `**gras**`, `*italique*` et `` `code` ``.
+- `**gras**`, `*italique*`, `***gras et italique***` et `` `code` ``.
 - `[libellé]{https://example.com}` pour un lien. Les parenthèses Markdown
   (`[libellé](url)`) ne sont pas reconnues.
 - `[EN DIRECT]{color:red}` pour une couleur contrôlée. Les seules valeurs sont
