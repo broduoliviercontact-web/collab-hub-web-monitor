@@ -36,6 +36,13 @@ export function createContentRuntime({ doc, els, storage, now }) {
     freshness,
     getInitialSavedAt: () => lastSavedAt,
     getInitialRestore: () => lastLocalRestore,
+    // Rejoue une valeur déjà connue, sans persister ni affecter la fraîcheur.
+    // Utilisé lorsqu'un sound_link_visible repasse à true.
+    rerender(header) {
+      if (!KNOWN_HEADERS.includes(header)) return false;
+      renderField(header, state.get(header), els, doc);
+      return true;
+    },
     // Applique un header de contenu (sound_* via routeControl, ou heartbeat).
     // Rend le champ, rafraîchit la fraîcheur contenu, persiste. Retourne le
     // timestamp sauvegardé (ou null si heartbeat / non routé / sauvegarde

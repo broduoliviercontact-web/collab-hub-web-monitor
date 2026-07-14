@@ -21,6 +21,16 @@ export const IMAGE_HEADERS = [
   'sound_image_slot',
 ];
 
+// Préférences d'affichage éphémères des cinq champs éditoriaux. Elles ne
+// changent jamais le contenu et ne doivent pas être stockées localement.
+export const TEXT_VISIBILITY_HEADERS = [
+  'sound_title_visible',
+  'sound_author_visible',
+  'sound_subtitle_visible',
+  'sound_description_visible',
+  'sound_link_visible',
+];
+
 // Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler
 // son activité. Jamais affiché comme contenu, jamais persisté.
 export const HEARTBEAT_HEADER = 'sound_heartbeat';
@@ -40,7 +50,9 @@ export const STREAM_HEADERS = [
 ];
 
 // Tous les headers à observer au démarrage : contenus, image éphémère et heartbeat.
-export const OBSERVABLE_HEADERS = [...KNOWN_HEADERS, ...IMAGE_HEADERS, HEARTBEAT_HEADER];
+export const OBSERVABLE_HEADERS = [
+  ...KNOWN_HEADERS, ...IMAGE_HEADERS, ...TEXT_VISIBILITY_HEADERS, HEARTBEAT_HEADER,
+];
 
 // Normalise data.values en chaîne.
 // - tableau -> join(' ')
@@ -67,6 +79,16 @@ export function routeImageControl(data, onUpdate) {
   if (!data || typeof data !== 'object') return false;
   const { header } = data;
   if (!IMAGE_HEADERS.includes(header)) return false;
+  onUpdate(header, normalizeValue(data.values));
+  return true;
+}
+
+// Route une préférence de visibilité sans toucher au contenu éditorial ni à sa
+// persistance. Les valeurs sont normalisées comme les autres contrôles Max.
+export function routeTextVisibilityControl(data, onUpdate) {
+  if (!data || typeof data !== 'object') return false;
+  const { header } = data;
+  if (!TEXT_VISIBILITY_HEADERS.includes(header)) return false;
   onUpdate(header, normalizeValue(data.values));
   return true;
 }

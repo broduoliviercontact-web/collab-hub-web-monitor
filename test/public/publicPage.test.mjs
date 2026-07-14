@@ -223,6 +223,25 @@ test('6b. réception image : affichée sans être persistée avec les textes', a
   r.teardown();
 });
 
+test('6c. visibilité des textes : masque sans effacer et reste hors localStorage', async () => {
+  const { conn, storage, doc, r } = mount();
+  await flush();
+  conn.getOpts().onControl({ header: 'sound_title', values: 'Titre conservé' });
+  conn.getOpts().onControl({ header: 'sound_title_visible', values: 'false' });
+  assert.equal(doc.getElementById('sound-title-wrap').hidden, true);
+  assert.equal(doc.getElementById('sound-title').textContent, 'Titre conservé');
+  assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)).fields.sound_title, 'Titre conservé');
+  conn.getOpts().onControl({ header: 'sound_title_visible', values: 'true' });
+  assert.equal(doc.getElementById('sound-title-wrap').hidden, false);
+
+  conn.getOpts().onControl({ header: 'sound_link', values: 'https://example.com' });
+  conn.getOpts().onControl({ header: 'sound_link_visible', values: 'false' });
+  assert.equal(doc.getElementById('sound-link-wrap').hidden, true);
+  conn.getOpts().onControl({ header: 'sound_link_visible', values: 'true' });
+  assert.equal(doc.getElementById('sound-link-wrap').hidden, false);
+  r.teardown();
+});
+
 test('7. compteur dauditeurs : stream_listener_count -> libellé rendu dans lk-listener-count', async () => {
   const { conn, doc, r } = mount();
   await flush();

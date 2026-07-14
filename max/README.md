@@ -90,10 +90,17 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   `sound_image_slot` déplace le bloc image : `top` (avant le titre),
   `after_title` (entre titre et auteur), `after_author` (après l'auteur),
   `after_subtitle` (après le sous-titre) ou `bottom` (après la description).
-- **Zone 5 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
+- **Zone 5 — VISIBILITÉ DES TEXTES** : cinq boîtes message pilotent
+  `sound_title_visible`, `sound_author_visible`, `sound_subtitle_visible`,
+  `sound_description_visible` et `sound_link_visible`. Envoyer `true` (ou `1`)
+  affiche le champ ; `false` (ou `0`) le masque sans supprimer son contenu.
+  **ENVOYER LES 5 VISIBILITÉS TEXTE** emploie `send/receive ch_vis5` avec le
+  même double passage que les autres groupes. Ces préférences sont éphémères :
+  elles reviennent à `true` après un rechargement de la page.
+- **Zone 6 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
-- **Zone 6 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
+- **Zone 7 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
   tant que le CH-Client est connecté. `connected` (sortie 1 de
   `route serverMessage connected`) pilote un `toggle` qui démarre/arrête
   `metro 10000` ; chaque tick -> `push all sound_heartbeat 1` vers
@@ -146,7 +153,13 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    Le visuel versionné de test peut être appelé avec
    `/images/collab-hub-image-test.svg` : il fonctionne en local et sur chaque
    déploiement Vercel, sans modifier l'URL dans Max.
-10. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
+10. Descendre à **VISIBILITÉ DES TEXTES** : saisir `false` dans
+    `sound_title_visible`, cliquer **ENVOYER LES 5 VISIBILITÉS TEXTE** et
+    vérifier que seul le titre disparaît. Repasser à `true` : le même titre
+    réapparaît sans devoir le renvoyer. Répéter avec `sound_author_visible`,
+    `sound_subtitle_visible`, `sound_description_visible` et
+    `sound_link_visible`.
+11. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
    `connected 0` côté Max, rétablir, renvoyer un champ → nouvel événement.
 
 ## Dépannage

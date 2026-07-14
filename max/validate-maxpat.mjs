@@ -11,6 +11,10 @@ const IMAGE_HEADERS = [
   'sound_image_url', 'sound_image_visible', 'sound_image_width',
   'sound_image_height', 'sound_image_fit', 'sound_image_position', 'sound_image_slot',
 ];
+const TEXT_VISIBILITY_HEADERS = [
+  'sound_title_visible', 'sound_author_visible', 'sound_subtitle_visible',
+  'sound_description_visible', 'sound_link_visible',
+];
 
 let j;
 try { j = JSON.parse(readFileSync(file, 'utf8')); }
@@ -84,6 +88,19 @@ for (const h of IMAGE_HEADERS) {
   hasToSymbol ? pass(`header image ${h} présent (tosymbol + prepend)`) : fail(`${h}: tosymbol manquant avant prepend`);
 }
 
+for (const h of TEXT_VISIBILITY_HEADERS) {
+  const formatter = formatterForHeader(h);
+  if (!formatter) {
+    fail(`header visibilité ${h} manquant`);
+    continue;
+  }
+  const hasToSymbol = lines.some(l => {
+    const source = byId[l.patchline.source[0]];
+    return l.patchline.destination[0] === formatter.id && /^tosymbol$/.test((source?.text || '').trim());
+  });
+  hasToSymbol ? pass(`header visibilité ${h} présent (tosymbol + prepend)`) : fail(`${h}: tosymbol manquant avant prepend`);
+}
+
 // 6. bouton global + séquence double passage (register + deliver)
 const tbb = boxes.find(b => b.maxclass === 'newobj' && /^t b b$/.test((b.text || '').trim()));
 tbb ? pass('trigger "t b b" présent') : fail('trigger "t b b" manquant');
@@ -151,6 +168,27 @@ for (const r of imageReceives) {
 }
 imageReceiveToPublish === 7 ? pass('7 receive image -> value box -> tosymbol -> push (14 déclenchements sur 2 passages)') : fail(`${imageReceiveToPublish}/7 receive image câblés vers un push sûr`);
 
+// Groupe visibilité texte : cinq valeurs, même double passage register/deliver.
+const TEXT_VISIBILITY_SEND_NAME = 'ch_vis5';
+const textVisibilitySends = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^send\\s+${TEXT_VISIBILITY_SEND_NAME}$`).test((b.text || '').trim()));
+const textVisibilityReceives = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^receive\\s+${TEXT_VISIBILITY_SEND_NAME}$`).test((b.text || '').trim()));
+textVisibilitySends.length === 1 ? pass(`send ${TEXT_VISIBILITY_SEND_NAME} présent (1)`) : fail(`send ${TEXT_VISIBILITY_SEND_NAME} attendu unique, trouvé ${textVisibilitySends.length}`);
+textVisibilityReceives.length === 5 ? pass(`5 receive ${TEXT_VISIBILITY_SEND_NAME} (un par préférence)`) : fail(`5 receive ${TEXT_VISIBILITY_SEND_NAME} attendus, trouvé ${textVisibilityReceives.length}`);
+const textVisibilityTrigger = boxes.find(b => b.maxclass === 'newobj' && /^t b b$/.test((b.text || '').trim())
+  && destsOf(b.id, 0).some(id => textVisibilitySends.some(s => s.id === id)));
+const textVisibilityDelay = textVisibilityTrigger && destsOf(textVisibilityTrigger.id, 1).map(id => byId[id]).find(b => b && /^delay\s+300$/.test((b.text || '').trim()));
+if (!textVisibilityTrigger) fail('trigger visibilité t b b -> send ch_vis5 manquant');
+else if (!textVisibilityDelay || !destsOf(textVisibilityDelay.id, 0).some(id => textVisibilitySends.some(s => s.id === id))) fail('double passage visibilité (delay 300 -> send ch_vis5) manquant');
+else pass('double passage visibilité texte register/deliver présent');
+let textVisibilityReceiveToPublish = 0;
+for (const r of textVisibilityReceives) {
+  const valueBox = destsOf(r.id, 0).map(id => byId[id]).find(b => b && b.maxclass === 'message');
+  const symbolizer = valueBox && destsOf(valueBox.id, 0).map(id => byId[id]).find(b => b && /^tosymbol$/.test((b.text || '').trim()));
+  const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend push all sound_.*_visible$/.test((b.text || '').trim()));
+  if (pub) textVisibilityReceiveToPublish++;
+}
+textVisibilityReceiveToPublish === 5 ? pass('5 receive visibilité -> value box -> tosymbol -> push (10 déclenchements sur 2 passages)') : fail(`${textVisibilityReceiveToPublish}/5 receive visibilité câblés vers un push sûr`);
+
 // 7. chaque formatter va vers ch.client + print.
 for (const h of REQUIRED_HEADERS) {
   const pub = formatterForHeader(h);
@@ -162,6 +200,15 @@ for (const h of REQUIRED_HEADERS) {
   if (!toPrint) fail(`${h}: push non câblé vers print CollabHub-Web-Sender`);
 }
 for (const h of IMAGE_HEADERS) {
+  const pub = formatterForHeader(h);
+  if (!pub) continue;
+  const outs = lines.filter(l => l.patchline.source[0] === pub.id).map(l => l.patchline.destination[0]);
+  const toClient = outs.some(id => byId[id] && byId[id].maxclass === 'bpatcher' && /ch\.client/i.test(byId[id].name || ''));
+  const toPrint = outs.some(id => byId[id] && /print\s+CollabHub-Web-Sender/.test(byId[id].text || ''));
+  if (!toClient) fail(`${h}: push non câblé vers ch.client`);
+  if (!toPrint) fail(`${h}: push non câblé vers print CollabHub-Web-Sender`);
+}
+for (const h of TEXT_VISIBILITY_HEADERS) {
   const pub = formatterForHeader(h);
   if (!pub) continue;
   const outs = lines.filter(l => l.patchline.source[0] === pub.id).map(l => l.patchline.destination[0]);

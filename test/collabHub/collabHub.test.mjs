@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeValue, routeControl, routeImageControl, IMAGE_HEADERS, KNOWN_HEADERS } from '../../src/collabHub/messageRouter.js';
+import { normalizeValue, routeControl, routeImageControl, routeTextVisibilityControl, IMAGE_HEADERS, KNOWN_HEADERS, OBSERVABLE_HEADERS, TEXT_VISIBILITY_HEADERS } from '../../src/collabHub/messageRouter.js';
 import { createObserveGuard, wireSocket } from '../../src/collabHub/observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from '../../src/collabHub/authMode.js';
 import { fakeSocket } from '../helpers/socket.mjs';
@@ -58,6 +58,15 @@ test('routeImageControl route uniquement les 7 headers image', () => {
   assert.deepEqual(received, { h: 'sound_image_url', v: 'https://example.com/image.png' });
   assert.equal(routeImageControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
   assert.equal(IMAGE_HEADERS.length, 7);
+});
+
+test('routeTextVisibilityControl route uniquement les 5 préférences texte', () => {
+  let received = null;
+  const routed = routeTextVisibilityControl({ header: 'sound_title_visible', values: ['false'] }, (h, v) => { received = { h, v }; });
+  assert.equal(routed, true);
+  assert.deepEqual(received, { h: 'sound_title_visible', v: 'false' });
+  assert.equal(routeTextVisibilityControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
+  assert.equal(TEXT_VISIBILITY_HEADERS.length, 5);
 });
 
 // --- Lot 1.1 : observation idempotente (observeGuard / wireSocket) ---
@@ -132,13 +141,13 @@ test('wireSocket : un listener par event, réobservation idempotente sur reconne
   for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'control']) {
     assert.equal(sock.listenerCount(e), 1, `listener unique pour ${e}`);
   }
-  sock.fire('connect');            // contenus, image éphémère, slot et heartbeat
-  assert.equal(emitted.length, 13);
+  sock.fire('connect');            // contenus, image, visibilités et heartbeat
+  assert.equal(emitted.length, OBSERVABLE_HEADERS.length);
   sock.fire('reconnect');          // déclenche aussi connect ensuite -> déjà observé
-  assert.equal(emitted.length, 13);
+  assert.equal(emitted.length, OBSERVABLE_HEADERS.length);
   sock.fire('disconnect');         // vide le guard
-  sock.fire('connect');            // reconnect -> 13 nouvelles
-  assert.equal(emitted.length, 26);
+  sock.fire('connect');            // reconnect -> une nouvelle série
+  assert.equal(emitted.length, OBSERVABLE_HEADERS.length * 2);
 });
 
 // 16. forget() permet de réobserver après un unobserve explicite
