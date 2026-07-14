@@ -46,6 +46,7 @@ function fakeStorage() {
 }
 
 const SNAP = {
+  sound_show_name: 'Radio 2',
   sound_title: 'Morceau A',
   sound_author: 'Auteur A',
   sound_subtitle: 'Sous-titre A',
@@ -122,6 +123,7 @@ test('persist : état valide restauré depuis localStorage', () => {
   saveSoundState(st, SNAP, fixedNow);
   const r = loadSoundState(st);
   assert.equal(r.fields.sound_title, 'Morceau A');
+  assert.equal(r.fields.sound_show_name, 'Radio 2');
   assert.equal(r.fields.sound_author, 'Auteur A');
   assert.equal(r.fields.sound_link, 'https://example.com/a');
   assert.equal(r.updatedAt, FIXED_TS);
@@ -642,7 +644,7 @@ test('routeStreamControl : payload reçu met à jour streamStatus', () => {
   assert.equal(diag.lastStreamHeader, 'stream_level');
 });
 
-// H11. pas de régression des 5 headers sound_* (routeControl réservé aux contenus)
+// H11. pas de régression des 6 headers sound_* (routeControl réservé aux contenus)
 
 test('routage : routeControl accepte sound_*, routeStreamControl accepte stream_*', () => {
   let sound = null;
@@ -935,4 +937,3 @@ test('publishClient : stream_listener_count enregistré à la connexion', async 
   assert.deepEqual(cnt[0].values, [0], 'register avec valeur neutre');
   assert.ok(pub.isRegistered('stream_listener_count'));
 });
-

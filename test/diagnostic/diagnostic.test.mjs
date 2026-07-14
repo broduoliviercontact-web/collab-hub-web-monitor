@@ -96,11 +96,11 @@ test('ops : debug public non monté hors ?debug=1', () => {
 });
 
 // --- 23 : page publique normale inchangée (rendu hors debug identique) ---
-// Le travail Ops Debug ne doit pas altérer le rendu public normal : les 5 champs
+// Le travail Ops Debug ne doit pas altérer le rendu public normal : les 6 champs
 // se rendent comme avant, indépendamment de la gate debug. On vérifie aussi que
 // la gate reste false dans la configuration de production (var false + ?debug=1).
 
-test('ops : page publique normale inchangée (rendu 5 champs hors debug)', () => {
+test('ops : page publique normale inchangée (rendu 6 champs hors debug)', () => {
   assert.equal(shouldMountPublicDebug({ debugParam: '1', publicDebugEnabled: false }), false);
   const els = fakeEls();
   renderField('sound_title', 'Titre A', els);
@@ -296,9 +296,9 @@ test('ops : LiveKit inactif quand désactivé', () => {
 
 // --- 13/14/15/16 : tableau des headers ---
 
-test('ops : table contient tous les headers attendus (23)', () => {
+test('ops : table contient tous les headers attendus (24)', () => {
   const rows = deriveHeadersTable({ stats: {}, observed: new Set(HEADERS_TABLE), now: () => 1000 });
-  assert.equal(rows.length, 23);
+  assert.equal(rows.length, 24);
   assert.deepEqual(rows.map((r) => r.header), HEADERS_TABLE);
   // Tous observés et jamais reçus -> JAMAIS REÇU.
   assert.ok(rows.every((r) => r.observed && r.status === HEADER_STATUS.JAMAIS_RECU));

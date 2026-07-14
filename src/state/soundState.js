@@ -1,7 +1,8 @@
-// État courant des cinq champs. Pur, testable en node.
+// État courant des six champs. Pur, testable en node.
 import { KNOWN_HEADERS } from '../collabHub/messageRouter.js';
 
 export const DEFAULTS = Object.freeze({
+  sound_show_name: '',
   sound_title: 'En attente du prochain morceau',
   sound_author: 'Auteur inconnu',
   sound_subtitle: 'Connexion à Collab-Hub…',

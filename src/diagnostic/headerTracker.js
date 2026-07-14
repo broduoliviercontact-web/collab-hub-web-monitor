@@ -17,10 +17,10 @@ import { IMAGE_HEADERS, TEXT_VISIBILITY_HEADERS } from '../collabHub/messageRout
 
 // Seuil de péremption par header. Les headers de flux (stream_*) sont périmés
 // après STALE_MS (3 s, spec Lot 4G). Le heartbeat Max après 25 s (activité Max).
-// Les 5 contenus après 5 min (fraîcheur contenu). Ces seuils sont les mêmes que
+// Les 6 contenus après 5 min (fraîcheur contenu). Ces seuils sont les mêmes que
 // ceux utilisés par freshness.js / streamStatus.js -> cohérence avec le reste.
 const CONTENT_HEADERS = new Set([
-  'sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link',
+  'sound_show_name', 'sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link',
 ]);
 
 export function thresholdFor(header) {
@@ -31,6 +31,7 @@ export function thresholdFor(header) {
 }
 
 export const HEADERS_TABLE = [
+  'sound_show_name',
   'sound_title',
   'sound_author',
   'sound_subtitle',

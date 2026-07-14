@@ -1,6 +1,6 @@
 # CollabHub_Web_Text_Sender — patch Max émetteur de test (Lot 0C)
 
-Patch Max **autonome** pour publier les cinq champs du site et les six contrôles
+Patch Max **autonome** pour publier les six champs du site et les sept contrôles
 d'image vers Collab-Hub,
 afin de tester la réception côté client web (à la racine du projet).
 
@@ -44,30 +44,34 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   La sortie du module est routée vers `print CollabHub-Status` (console) et
   `route serverMessage connected` → deux moniteurs (message serveur + état).
   Serveur par défaut attendu : `https://server.collab-hub.io`, version 0.3.4.
-- **Zone 2 — CHAMPS ÉDITABLES** : cinq lignes (`sound_title`, `sound_author`,
-  `sound_subtitle`, `sound_description`, `sound_link`). Chaque ligne : un
+- **Zone 2 — CHAMPS ÉDITABLES** : six lignes (`sound_show_name`,
+  `sound_title`, `sound_author`, `sound_subtitle`, `sound_description`,
+  `sound_link`). Chaque ligne : un
   commentaire (header), une **boîte message** de saisie, un bouton **Envoyer**,
   `tosymbol` puis `prepend push all <header>`, et un moniteur « dernier
   envoi ». `tosymbol` transforme toute la saisie en une valeur unique avant
   publication : les espaces et la syntaxe éditoriale du site sont préservés.
-- **Zone 3 — ENVOYER LES 5 CHAMPS** : un bouton global qui, via `t b b`, envoie
+- **Zone 3 — ENVOYER LES 6 CHAMPS** : un bouton global qui, via `t b b`, envoie
   chaque champ **deux fois**. Le trigger `t b b` a deux sorties : la sortie 0
   déclenche le **1er passage (enregistrement)** immédiatement ; la sortie 1 part
   dans un `delay 300` qui déclenche le **2e passage (livraison)** 300 ms plus
-  tard. Chaque passage émet un bang dans le send/rceive nommé `ch_pub5`, qui
-  est reçu par 5 `receive ch_pub5` (un par header) → chaque receive pousse la
+  tard. Chaque passage émet un bang dans le send/rceive nommé `ch_pub6`, qui
+  est reçu par 6 `receive ch_pub6` (un par header) → chaque receive pousse la
   valeur courante de sa boîte dans `tosymbol` puis la commande
   `push all <header>`.
   C'est le **2e passage** qui déclenche les événements `control` reçus par la
   page web (voir Sémantique). On évite les longs câbles via le couple
-  `send ch_pub5` / `receive ch_pub5`.
+  `send ch_pub6` / `receive ch_pub6`.
 
   > **Ancien mécanisme retiré (Lot 2C)** : la version précédente utilisait
   > `pipe 0 50 100 150 200`, qui crée **un inlet par argument** (5 inlets, 5
   > outlets). Seul l'inlet 0 étant câblé, seul l'outlet 0 tirait → un seul
   > header publié par passage (2 au lieu de 10). Le send/receive + `delay 300`
-  > garantit que les **5** headers partent à **chaque** passage, dans un ordre
+  > garantit que les **6** headers partent à **chaque** passage, dans un ordre
   > déterministe, sans envoi parasite.
+
+  `sound_show_name` est affiché au-dessus du titre comme nom d'émission. Une
+  valeur vide le masque automatiquement, sans laisser de bloc vide dans la page.
 - **Zone 4 — IMAGE DE PROGRAMME** (issue #26) : sept boîtes message contrôlent
   `sound_image_url`, `sound_image_visible`, `sound_image_width`,
   `sound_image_height`, `sound_image_fit`, `sound_image_position` et
@@ -128,18 +132,19 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
    page. Vérifier `.env` : `VITE_COLLAB_HUB_URL=https://server.collab-hub.io`
    et `VITE_COLLAB_HUB_NAMESPACE=hub`. La page affiche **connecté** + un
    `serverMessage` « Collab-Hub Version: 0.3.4. You're in Namespace /hub ».
-2. Dans la page web, cliquer **Observer les 5 champs**.
+2. Dans la page web, cliquer **Observer les 6 champs**.
 3. Ouvrir `max/CollabHub_Web_Text_Sender.maxpat` dans Max.
 4. Dans le bpatcher CH-Client, vérifier l'URL serveur
    `https://server.collab-hub.io`, puis cliquer **connect**.
 5. Attendre le message serveur **0.3.4** (moniteur « message serveur » et
    console `CollabHub-Status`). Il doit être identique côté Max et côté web.
-6. Test unitaire : ligne `sound_title`, cliquer **Envoyer** une 1re fois
+6. Test unitaire : ligne `sound_show_name`, cliquer **Envoyer** une 1re fois
    (enregistrement), puis une 2e fois → la page web reçoit un événement
-   `control` avec `header = "sound_title"`, `values = ["Premier morceau"]`.
+   `control` avec `header = "sound_show_name"`, `values = ["Radio 2"]`.
    Le compteur **Contrôles reçus** s'incrémente.
-7. Cliquer **ENVOYER LES 5 CHAMPS** : 5 événements `control` arrivent côté web
-   (2e passage). Vérifier le compteur (+5) et la zone diagnostic.
+7. Cliquer **ENVOYER LES 6 CHAMPS** : 6 événements `control` arrivent côté web
+   (2e passage). Vérifier le compteur (+6), le nom du show au-dessus du titre
+   et la zone diagnostic.
 8. Tester espaces/accents et syntaxe web : éditer une boîte saisie, par ex.
    `une phrase avec des espaces`, `**Concert** [EN DIRECT]{color:red}` ou
    `[Site artiste]{https://example.com}`, cliquer **Envoyer** deux fois puis
@@ -178,7 +183,7 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   (défaut `hub`). Mettre `VITE_COLLAB_HUB_NAMESPACE` côté web à la **même**
   valeur. `/` et `/hub` sont isolés (testé).
 - **Page web connectée mais aucun contrôle disponible** : observer avant de
-  publier (bouton « Observer les 5 champs » côté web), et se souvenir que la
+  publier (bouton « Observer les 6 champs » côté web), et se souvenir que la
   1re publication n'enregistre que le contrôle — il faut une 2e publication
   pour recevoir l'événement `control`.
 - **Observation effectuée avant ou après publication** : observer AVANT la
@@ -187,7 +192,7 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   `control` seulement sur la publication suivante.
 - **Valeur tronquée au premier espace** : vérifier que le câblage passe par
   `tosymbol` puis `prepend push all <header>`. Cette version du patch le
-  fait pour les cinq champs ; ne remplacez pas `tosymbol` par une boîte
+  fait pour les six champs ; ne remplacez pas `tosymbol` par une boîte
   `push all <header> $1`.
 - **Apostrophes / accents / URL** : les accents, apostrophes, URL et la syntaxe
   `[libellé]{https://…}` sont conservés comme valeur unique. Vérifier `values`
@@ -206,9 +211,9 @@ node max/validate-maxpat.mjs
 
 Vérifie : JSON valide, ids uniques, `lines` vers objets existants et
 inlets/outlets dans les limites, présence du bpatcher `ch.client.maxpat`, des
-5 headers éditoriaux et 7 headers image, de `print CollabHub-Web-Sender`, du
-`t b b`, du `send ch_pub5` +
-`delay 300` + 5 `receive ch_pub5` (double passage register/deliver, 10
+6 headers éditoriaux et 7 headers image, de `print CollabHub-Web-Sender`, du
+`t b b`, du `send ch_pub6` +
+`delay 300` + 6 `receive ch_pub6` (double passage register/deliver, 12
 déclenchements), du groupe image `send ch_img7` + 7 `receive ch_img7` (double
 passage, 14 déclenchements), un bouton par envoi global, l'absence de l'ancien
 `pipe 0 50 100 150 200`, **et (Lot 3B)** le header technique `sound_heartbeat`,

@@ -68,6 +68,7 @@ function richEls() {
 
 function richSoundEls() {
   return {
+    showName: richEl(), showNameSection: richEl(),
     title: richEl(), author: richEl(), subtitle: richEl(), description: richEl(),
     linkWrap: richEl(), link: richEl(),
   };
@@ -185,6 +186,15 @@ test('renderField sound_title met à jour le titre seulement', () => {
   assert.equal(els.author.textContent, 'auteur');
   assert.equal(els.subtitle.textContent, 'sous');
   assert.equal(els.description.textContent, '');
+});
+
+test('renderField sound_show_name affiche le nom du show seulement si renseigné', () => {
+  const els = fakeEls();
+  renderField('sound_show_name', 'Radio 2', els);
+  assert.equal(els.showName.textContent, 'Radio 2');
+  assert.equal(els.showNameSection.hidden, false);
+  renderField('sound_show_name', '   ', els);
+  assert.equal(els.showNameSection.hidden, true);
 });
 
 // 9. état : un seul header reçu ne change que ce champ
@@ -506,12 +516,12 @@ test('syntaxe Collab-Hub : ***texte*** rend gras et italique simultanément', ()
   assert.equal(segments[0].children[0].children[0].value, 'Concert');
 });
 
-test('syntaxe Collab-Hub : les cinq champs sound_* rendent le même balisage sûr', () => {
+test('syntaxe Collab-Hub : les six champs sound_* rendent le même balisage sûr', () => {
   const doc = richDoc();
   const els = richSoundEls();
   const value = '**Titre** [source]{https://example.com} [EN DIRECT]{color:accent}|suite';
   const targets = [
-    ['sound_title', els.title], ['sound_author', els.author],
+    ['sound_show_name', els.showName], ['sound_title', els.title], ['sound_author', els.author],
     ['sound_subtitle', els.subtitle], ['sound_description', els.description],
     ['sound_link', els.linkWrap],
   ];

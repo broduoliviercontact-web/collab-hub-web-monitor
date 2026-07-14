@@ -11,8 +11,8 @@
   la release) — contient le patch Max, le README-Max, le fichier `LICENSE` et
   `VERSION.txt`.
 - **Procédure rapide** : installer le client Collab-Hub Max → ouvrir le patch
-  → connecter à `https://server.collab-hub.io` → remplir les 5 champs → cliquer
-  **ENVOYER LES 5 CHAMPS** → ouvrir le site web → vérifier « Connecté — Max
+  → connecter à `https://server.collab-hub.io` → remplir les 6 champs → cliquer
+  **ENVOYER LES 6 CHAMPS** → ouvrir le site web → vérifier « Connecté — Max
   actif ». Détails : `docs/release/v1.1.2.md` et `max/README.md`.
 
 Page web publique affichant en temps réel le morceau en cours, pilotée depuis
@@ -22,8 +22,8 @@ un dashboard technique.
 ## Objectif
 
 Permettre au public (présent ou distant) de suivre le contexte du morceau
-diffusé : **titre**, **auteur**, **sous-titre**, **note descriptive** et un
-**lien** optionnel. Ces cinq champs sont publiés depuis Max via le patch émetteur
+diffusé : **nom d'émission**, **titre**, **auteur**, **sous-titre**, **note
+descriptive** et un **lien** optionnel. Ces six champs sont publiés depuis Max via le patch émetteur
 `max/CollabHub_Web_Text_Sender.maxpat` et reçus en temps réel par cette page,
 sans rechargement.
 
@@ -40,7 +40,7 @@ src/
 │   ├── observeGuard.js          # observation idempotente par socket.id (pur, testable)
 │   └── messageRouter.js         # normalisation + routage, KNOWN/HEARTBEAT headers (pur)
 ├── state/
-│   ├── soundState.js            # état courant des 5 champs (pur, testable)
+│   ├── soundState.js            # état courant des 6 champs (pur, testable)
 │   ├── persist.js               # persistance locale localStorage (Lot 3A, pur, testable)
 │   └── freshness.js             # état technique fraîcheur + heartbeat (Lot 3B, pur)
 ├── ui/
@@ -115,10 +115,10 @@ npm run dev                # http://localhost:5173 (ou port suivant)
    l'installation du package Collab-Hub).
 3. Connecter le CH-Client à `https://server.collab-hub.io`, attendre la version
    0.3.4 (identique côté Max et côté web).
-4. Cliquer **ENVOYER LES 5 CHAMPS** dans Max.
-5. Vérifier la mise à jour temps réel des trois blocs.
+4. Cliquer **ENVOYER LES 6 CHAMPS** dans Max.
+5. Vérifier la mise à jour temps réel du nom d'émission et des cinq blocs.
 6. Modifier uniquement le titre dans Max -> seul le titre change sur la page.
-7. Tester la syntaxe éditoriale Collab-Hub sur chacun des cinq champs
+7. Tester la syntaxe éditoriale Collab-Hub sur chacun des six champs
    `sound_*`. Voir « Syntaxe éditoriale Collab-Hub » ci-dessous.
 8. Couper puis rétablir le réseau -> la dernière valeur reste affichée, les
    nouvelles valeurs arrivent après reconnexion.
@@ -175,7 +175,7 @@ diagnostic (copier / télécharger JSON / effacer les logs), connexion, version 
 configuration runtime, stats Collab-Hub (transport, reconnexions, raisons de
 déconnexion/dernier `connect_error`), persistance locale, fraîcheur, tableau
 des headers attendus (observé/reçu/compteur/dernière réception/âge/valeur brute
-résumée/statut), observation manuelle des 5 headers, dernier contrôle reçu
+résumée/statut), observation manuelle des 6 headers, dernier contrôle reçu
 (logs bornés), LiveKit listener, flux direct. Le panneau est un chunk JS séparé
 (chargé uniquement en mode debug gated).
 
@@ -193,10 +193,10 @@ par un sanitizer récursif (`src/diagnostic/diagnosticSanitizer.js`) qui retire
 et masque les identity/SID. Aucune métrique réseau inventée : WebRTC stats
 renvoient `unsupported` tant qu'aucune implémentation fiable n'est branchée.
 
-Le bouton « Observer les 5 champs » est **idempotent** : il s'active tant que
-les 5 headers ne sont pas abonnés pour le socket courant, puis affiche
-« 5 champs observés » et se désactive (l'observation automatique à la connexion
-a déjà abonné les 5 en mode normal). Les boutons individuels ne réémettent pas
+Le bouton « Observer les 6 champs » est **idempotent** : il s'active tant que
+les 6 headers ne sont pas abonnés pour le socket courant, puis affiche
+« 6 champs observés » et se désactive (l'observation automatique à la connexion
+a déjà abonné les 6 en mode normal). Les boutons individuels ne réémettent pas
 un header déjà observé pour le même `socket.id`.
 
 Les **probes** qui ont établi les faits du protocole (namespace `/hub`,
@@ -213,10 +213,10 @@ contenu, puis les publications en temps réel le mettent à jour.
 - **À chaque contrôle reçu** : l'état mémoire est mis à jour, puis persisté avec
   un `updatedAt` (timestamp ISO).
 - **Au chargement** : `loadSoundState` lit `localStorage` et **valide
-  strictement** la structure. Seuls les cinq headers connus et de type string
+  strictement** la structure. Seuls les six headers connus et de type string
   sont restaurés ; tout le reste (JSON corrompu, version inconnue, header
   inconnu, type non string, champ trop long) est **ignoré** → fallback sur les
-  valeurs par défaut. Au rendu, les cinq champs passent par la syntaxe
+  valeurs par défaut. Au rendu, les six champs passent par la syntaxe
   éditoriale contrôlée : seuls les liens `http:`/`https:` et les couleurs
   documentées sont interprétés. Les directives invalides restent du texte brut,
   sans HTML interprété ; une URL simple dangereuse ou vide dans `sound_link`
@@ -305,7 +305,7 @@ secrète** — ce sont des valeurs publiques, cuites dans le bundle au build.
    `Collab-Hub Version: 0.3.4. You're in Namespace /hub`.
 2. Connecter le CH-Client Max à `https://server.collab-hub.io`, attendre la
    version 0.3.4 (identique côté Max et côté site).
-3. Cliquer **ENVOYER LES 5 CHAMPS** dans Max → les trois blocs se remplissent
+3. Cliquer **ENVOYER LES 6 CHAMPS** dans Max → le nom d'émission et les blocs se remplissent
    en temps réel (titre, auteur, sous-titre, description, lien).
 4. Modifier uniquement le titre dans Max → seul le titre change (isolation).
 5. `?debug=1` : https://collab-hub-web-monitor.vercel.app/?debug=1 → panneau
@@ -316,7 +316,7 @@ secrète** — ce sont des valeurs publiques, cuites dans le bundle au build.
    temps réel. Bouton « Effacer l'état local » en `?debug=1` pour repartir des
    défauts.
 7. Couper/rétablir le réseau → la dernière valeur reste affichée, les nouvelles
-   arrivent après reconnexion (réobservation idempotente des 5 headers).
+   arrivent après reconnexion (réobservation idempotente des 6 headers).
 
 Procédure détaillée et dépannage Max : `max/README.md`. Validation complète :
 `docs/bmad/03-lot-1-validation.md`.
@@ -328,7 +328,7 @@ npm test          # node --test test/runTests.mjs  (57 tests, zéro dépendance)
 ```
 
 Couvrent : normalisation (tableau 1 ou n éléments, scalaire, absent), routage
-(header inconnu ignoré / connu routé), syntaxe éditoriale sur les cinq champs
+(header inconnu ignoré / connu routé), syntaxe éditoriale sur les six champs
 (formatage, liens http/https, couleurs contrôlées, séparateurs et refus
 de HTML/CSS/URL dangereux), rendu du bon élément, isolation des champs,
 état, **observation idempotente** (un header émis une fois par socket.id,
@@ -347,7 +347,7 @@ contenu restauré ancien, serveur prioritaire, horloge injectable). Voir
 
 - La **1re publication** d'un header l'enregistre seulement et ne pousse pas la
   valeur ; le patch Max envoie chaque champ deux fois (register + deliver) via
-  `t b b` + `send ch_pub5` / `delay 300` / 5 `receive ch_pub5` (voir
+  `t b b` + `send ch_pub6` / `delay 300` / 6 `receive ch_pub6` (voir
   `max/README.md`).
 - Persistance **locale uniquement** (Lot 3A) : le dernier contenu est restauré
   depuis `localStorage` au rechargement, mais il n'y a **pas d'historique** ni de
@@ -439,10 +439,10 @@ valeurs publiques, aucun secret) — indépendant de la connexion listener (mote
 v1.1.2 et bouton inchangés). Voir `docs/bmad/15-public-stream-status.md`.
 
 **Syntaxe éditoriale Collab-Hub** (issues #2, #4 et #5, additif, aucun
-changement du patch Max ni des cinq champs) :
+changement du patch Max ni des six champs) :
 
-Cette syntaxe est disponible dans `sound_title`, `sound_author`,
-`sound_subtitle`, `sound_description` et `sound_link`. Ce n'est **pas du
+Cette syntaxe est disponible dans `sound_show_name`, `sound_title`,
+`sound_author`, `sound_subtitle`, `sound_description` et `sound_link`. Ce n'est **pas du
 Markdown complet** : seuls les formats suivants sont pris en charge.
 
 - `**gras**`, `*italique*`, `***gras et italique***` et `` `code` ``.

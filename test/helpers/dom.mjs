@@ -16,6 +16,7 @@ export function fakeEl() {
 
 export function fakeEls() {
   return {
+    showName: fakeEl(), showNameSection: fakeEl(),
     title: fakeEl(), author: fakeEl(), subtitle: fakeEl(),
     description: fakeEl(), linkWrap: fakeEl(), link: fakeEl(),
   };

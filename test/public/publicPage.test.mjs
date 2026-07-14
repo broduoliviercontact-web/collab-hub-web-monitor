@@ -199,6 +199,18 @@ test('5. réception sound_* : rendu du champ + persistance locale', async () => 
   r.teardown();
 });
 
+test('5b. sound_show_name : affiché si reçu, masqué s il est vide et persisté', async () => {
+  const { conn, storage, doc, r } = mount();
+  await flush();
+  conn.getOpts().onControl({ header: 'sound_show_name', values: 'Radio 2' });
+  assert.equal(doc.getElementById('sound-show-name').textContent, 'Radio 2');
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, false);
+  assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)).fields.sound_show_name, 'Radio 2');
+  conn.getOpts().onControl({ header: 'sound_show_name', values: '' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, true);
+  r.teardown();
+});
+
 test('6. réception stream_* : routé vers streamStatus, non persisté comme contenu', async () => {
   const { conn, storage, doc, r } = mount();
   await flush();

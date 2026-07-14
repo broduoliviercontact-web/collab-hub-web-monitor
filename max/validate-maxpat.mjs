@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const file = join(here, 'CollabHub_Web_Text_Sender.maxpat');
-const REQUIRED_HEADERS = ['sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link'];
+const REQUIRED_HEADERS = ['sound_show_name', 'sound_title', 'sound_author', 'sound_subtitle', 'sound_description', 'sound_link'];
 const IMAGE_HEADERS = [
   'sound_image_url', 'sound_image_visible', 'sound_image_width',
   'sound_image_height', 'sound_image_fit', 'sound_image_position', 'sound_image_slot',
@@ -54,7 +54,7 @@ client ? pass(`module Collab-Hub présent: bpatcher "${client.name}"`) : fail('a
 const printSend = boxes.find(b => b.maxclass === 'newobj' && /print\s+CollabHub-Web-Sender/.test(b.text || ''));
 printSend ? pass('print CollabHub-Web-Sender présent') : fail('print CollabHub-Web-Sender manquant');
 
-// 5. les 5 headers : tosymbol -> prepend push all <header>.
+// 5. les 6 headers : tosymbol -> prepend push all <header>.
 // tosymbol évite que les espaces, crochets et astérisques soient découpés en
 // plusieurs valeurs par Max avant l'envoi à Collab-Hub.
 function formatterForHeader(header) {
@@ -112,13 +112,13 @@ const badPipes = boxes.filter(b => b.maxclass === 'newobj' && /^pipe\s+\d+(\s+\d
 badPipes.length === 0 ? pass('aucun pipe multi-outlet (ancien mécanisme retiré)') : fail(`${badPipes.length} pipe(s) multi-outlet restant(s): ${badPipes.map(b => b.id).join(', ')}`);
 
 // 6b. send/receive nommé + delay de livraison
-const SEND_NAME = 'ch_pub5';
+const SEND_NAME = 'ch_pub6';
 const sends = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^send\\s+${SEND_NAME}$`).test((b.text || '').trim()));
 sends.length === 1 ? pass(`send ${SEND_NAME} présent (1)`) : fail(`send ${SEND_NAME} attendu unique, trouvé ${sends.length}`);
 const delay = boxes.find(b => b.maxclass === 'newobj' && /^delay\s+(\d+)\s*$/.exec((b.text || '').trim()));
 delay ? pass(`delay de livraison présent (${delay.text.trim()})`) : fail('delay de livraison manquant (ex: "delay 300")');
 const receives = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^receive\\s+${SEND_NAME}$`).test((b.text || '').trim()));
-receives.length === 5 ? pass(`5 receive ${SEND_NAME} (un par header)`) : fail(`5 receive ${SEND_NAME} attendus, trouvé ${receives.length}`);
+receives.length === 6 ? pass(`6 receive ${SEND_NAME} (un par header)`) : fail(`6 receive ${SEND_NAME} attendus, trouvé ${receives.length}`);
 
 // 6c. deux passages : t b b out0 -> send (register) ; t b b out1 -> delay -> send (deliver)
 function destsOf(id, outlet) { return lines.filter(l => l.patchline.source[0] === id && l.patchline.source[1] === outlet).map(l => l.patchline.destination[0]); }
@@ -132,7 +132,7 @@ if (tbb) {
 }
 
 // 6d. chaque receive -> une value box distincte -> tosymbol -> push ;
-// 5 headers x 2 passages = 10 déclenchements.
+// 6 headers x 2 passages = 12 déclenchements.
 let receiveToPublish = 0;
 for (const r of receives) {
   const rDest = destsOf(r.id, 0);
@@ -145,9 +145,9 @@ for (const r of receives) {
     if (pub) receiveToPublish++;
   }
 }
-receiveToPublish === 5 ? pass('5 receive -> value box -> tosymbol -> push (10 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/5 receive câblés vers un push sûr`);
+receiveToPublish === 6 ? pass('6 receive -> value box -> tosymbol -> push (12 déclenchements sur 2 passages)') : fail(`${receiveToPublish}/6 receive câblés vers un push sûr`);
 
-// Groupe image indépendant : six valeurs, même double passage register/deliver.
+// Groupe image indépendant : sept valeurs, même double passage register/deliver.
 const IMAGE_SEND_NAME = 'ch_img7';
 const imageSends = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^send\\s+${IMAGE_SEND_NAME}$`).test((b.text || '').trim()));
 const imageReceives = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^receive\\s+${IMAGE_SEND_NAME}$`).test((b.text || '').trim()));

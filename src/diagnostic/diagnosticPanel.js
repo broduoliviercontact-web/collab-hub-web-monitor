@@ -189,7 +189,9 @@ export function initDiagnostic(api, root, opts = {}) {
   function recomputeObserveAll() {
     const all = KNOWN_HEADERS.every(isObserved);
     observeAllBtn.disabled = all;
-    observeAllBtn.textContent = all ? '5 champs observés' : 'Observer les 5 champs';
+    observeAllBtn.textContent = all
+      ? `${KNOWN_HEADERS.length} champs observés`
+      : `Observer les ${KNOWN_HEADERS.length} champs`;
   }
   function setStatus(status) {
     connStatus = status;
@@ -554,7 +556,7 @@ export function initDiagnostic(api, root, opts = {}) {
     const h = headerInput.value.trim(); if (h) { socket.emit('unobserveControl', { header: h }); forget(h); refreshHeadersTable(); }
   });
 
-  // Liste des 5 headers + bouton d'observation individuel (idempotent).
+  // Liste des champs éditoriaux + bouton d'observation individuel (idempotent).
   KNOWN_HEADERS.forEach((header) => {
     if (!doc || typeof doc.createElement !== 'function') return;
     const wrap = doc.createElement('div');

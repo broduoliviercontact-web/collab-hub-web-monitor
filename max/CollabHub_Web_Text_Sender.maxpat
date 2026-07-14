@@ -13,7 +13,7 @@
       60,
       80,
       1100,
-      1500
+      2100
     ],
     "gridsize": [
       15,
@@ -47,7 +47,7 @@
             560,
             48
           ],
-          "text": "1) connecter Collab-Hub (bouton connect du CH-Client) ; 2) attendre le message serveur 0.3.4 ; 3) dans la page web, cliquer « Observer les 5 champs » ; 4) dans Max, cliquer « ENVOYER LES 5 CHAMPS ». Serveur attendu : https://server.collab-hub.io — version 0.3.4. Namespace = config.json du package (défaut « hub »)."
+          "text": "1) connecter Collab-Hub (bouton connect du CH-Client) ; 2) attendre le message serveur 0.3.4 ; 3) dans la page web, cliquer « Observer les 6 champs » ; 4) dans Max, cliquer « ENVOYER LES 6 CHAMPS ». Serveur attendu : https://server.collab-hub.io — version 0.3.4. Namespace = config.json du package (défaut « hub »)."
         }
       },
       {
@@ -713,7 +713,7 @@
             820,
             34
           ],
-          "text": "ENVOYER LES 5 CHAMPS — 1er passage immédiat, 2e passage 300 ms plus tard. Chaque passage déclenche les 5 push via send/receive ch_pub5 (ordre déterministe). Les événements control sont reçus par la page web. 10 messages imprimés dans la console Max."
+          "text": "ENVOYER LES 6 CHAMPS — 1er passage immédiat, 2e passage 300 ms plus tard. Chaque passage déclenche les 6 push via send/receive ch_pub6 (ordre déterministe). Les événements control sont reçus par la page web. 12 messages imprimés dans la console Max."
         }
       },
       {
@@ -746,7 +746,7 @@
             200,
             18
           ],
-          "text": "ENVOYER LES 5 CHAMPS"
+          "text": "ENVOYER LES 6 CHAMPS"
         }
       },
       {
@@ -811,7 +811,7 @@
             90,
             22
           ],
-          "text": "send ch_pub5"
+          "text": "send ch_pub6"
         }
       },
       {
@@ -847,7 +847,7 @@
             120,
             22
           ],
-          "text": "receive ch_pub5"
+          "text": "receive ch_pub6"
         }
       },
       {
@@ -865,7 +865,7 @@
             120,
             22
           ],
-          "text": "receive ch_pub5"
+          "text": "receive ch_pub6"
         }
       },
       {
@@ -883,7 +883,7 @@
             120,
             22
           ],
-          "text": "receive ch_pub5"
+          "text": "receive ch_pub6"
         }
       },
       {
@@ -901,7 +901,7 @@
             120,
             22
           ],
-          "text": "receive ch_pub5"
+          "text": "receive ch_pub6"
         }
       },
       {
@@ -919,7 +919,7 @@
             120,
             22
           ],
-          "text": "receive ch_pub5"
+          "text": "receive ch_pub6"
         }
       },
       {
@@ -1339,6 +1339,21 @@
       },
       {
         "box": { "id": "obj-139", "maxclass": "newobj", "numinlets": 1, "numoutlets": 1, "outlettype": ["bang"], "patching_rect": [250, 1786, 70, 22], "text": "delay 300" }
+      },
+      {
+        "box": { "id": "obj-140", "maxclass": "comment", "numinlets": 1, "numoutlets": 0, "patching_rect": [20, 1850, 180, 22], "text": "sound_show_name" }
+      },
+      {
+        "box": { "id": "obj-141", "maxclass": "message", "numinlets": 2, "numoutlets": 1, "outlettype": [""], "patching_rect": [210, 1850, 300, 22], "text": "Radio 2" }
+      },
+      {
+        "box": { "id": "obj-142", "maxclass": "newobj", "numinlets": 1, "numoutlets": 1, "outlettype": [""], "patching_rect": [530, 1850, 100, 22], "text": "tosymbol" }
+      },
+      {
+        "box": { "id": "obj-143", "maxclass": "newobj", "numinlets": 1, "numoutlets": 1, "outlettype": [""], "patching_rect": [650, 1850, 250, 22], "text": "prepend push all sound_show_name" }
+      },
+      {
+        "box": { "id": "obj-144", "maxclass": "newobj", "numinlets": 0, "numoutlets": 1, "outlettype": [""], "patching_rect": [130, 1850, 70, 22], "text": "receive ch_pub6" }
       }
     ],
     "lines": [
@@ -2221,7 +2236,12 @@
       { "patchline": { "source": ["obj-136", 0], "destination": ["obj-137", 0] } },
       { "patchline": { "source": ["obj-137", 0], "destination": ["obj-138", 0] } },
       { "patchline": { "source": ["obj-137", 1], "destination": ["obj-139", 0] } },
-      { "patchline": { "source": ["obj-139", 0], "destination": ["obj-138", 0] } }
+      { "patchline": { "source": ["obj-139", 0], "destination": ["obj-138", 0] } },
+      { "patchline": { "source": ["obj-141", 0], "destination": ["obj-142", 0] } },
+      { "patchline": { "source": ["obj-142", 0], "destination": ["obj-143", 0] } },
+      { "patchline": { "source": ["obj-143", 0], "destination": ["obj-3", 0] } },
+      { "patchline": { "source": ["obj-143", 0], "destination": ["obj-8", 0] } },
+      { "patchline": { "source": ["obj-144", 0], "destination": ["obj-141", 0] } }
     ]
   }
 }
