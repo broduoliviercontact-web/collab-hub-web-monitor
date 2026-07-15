@@ -451,6 +451,8 @@ Les six contenus peuvent aussi être masqués temporairement depuis Max avec
 Envoyer `true` les affiche et `false` les masque sans effacer leur valeur.
 `sound_show_name_visible true` reste masqué tant qu'aucun nom d'émission n'est
 renseigné.
+Lorsque les six contenus sont masqués et qu'aucune image n'est visible, la carte
+éditoriale entière disparaît, sans laisser de bordure vide au-dessus du lecteur.
 
 `sound_show_name_position` choisit son emplacement : `top` (tout en haut de la
 carte, avant une image placée en haut), `after_title`, `after_author`,

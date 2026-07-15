@@ -146,6 +146,23 @@ export function mountPublicPage(deps = {}) {
     },
   });
 
+  // Une carte éditoriale vide ne doit laisser ni fond ni bordure à l'écran.
+  // Le lecteur direct est un bloc séparé et reste donc toujours disponible.
+  function syncProgramCardVisibility() {
+    if (!els.card) return;
+    const sections = [
+      els.showNameSection,
+      els.titleSection,
+      els.authorSection,
+      els.subtitleSection,
+      els.imageWrap,
+      els.descriptionSection,
+    ];
+    els.card.hidden = !sections.some((section) => section && !section.hidden);
+  }
+
+  syncProgramCardVisibility();
+
   // --- État de flux direct (Lot 4G) : statut public AVANT connexion LiveKit ---
   // La logique métier (streamStatus, observation des headers stream_*, routage,
   // carte de flux + mini VU, compteur d'auditeurs, fraîcheur stale/fresh, snapshot
@@ -188,7 +205,7 @@ export function mountPublicPage(deps = {}) {
   const collab = createCollabHubRuntime({
     connect, serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE,
     stream, content, image, showNamePosition, textVisibility, diag, dbg,
-    recomputePublicState, renderStreamState, onError,
+    recomputePublicState, renderStreamState, syncProgramCardVisibility, onError,
     onConnected: (api) => {
       const diagOpts = {
         initialRestore: content.getInitialRestore(),

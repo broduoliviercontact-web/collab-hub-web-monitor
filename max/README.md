@@ -174,6 +174,8 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
     `sound_subtitle_visible`, `sound_description_visible` et
     `sound_link_visible`. Avec `sound_show_name_visible`, envoyer d'abord le
     nom d'émission, sinon le bloc reste volontairement caché.
+    Si les six contenus sont à `false` et qu'aucune image n'est visible, la carte
+    éditoriale disparaît entièrement, sans ligne vide au-dessus du lecteur.
 11. Descendre à **POSITION NOM D'ÉMISSION** : essayer successivement `top`,
     `after_title`, `after_author`, `after_subtitle` et `bottom`, puis cliquer
     **ENVOYER POSITION NOM D'ÉMISSION**. Avec une image en `top`, vérifier que
