@@ -3,7 +3,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeValue, routeControl, routeImageControl, routeShowNamePositionControl, routeTextVisibilityControl, IMAGE_HEADERS, KNOWN_HEADERS, OBSERVABLE_HEADERS, SHOW_NAME_POSITION_HEADERS, TEXT_VISIBILITY_HEADERS } from '../../src/collabHub/messageRouter.js';
+import {
+  BLOCK_IDS, BLOCK_LAYOUT_HEADERS, IMAGE_HEADERS, KNOWN_HEADERS,
+  normalizeValue, OBSERVABLE_HEADERS, routeBlockControl, routeControl,
+  routeImageControl, routeShowNamePositionControl, routeTextVisibilityControl,
+  SHOW_NAME_POSITION_HEADERS, TEXT_VISIBILITY_HEADERS,
+} from '../../src/collabHub/messageRouter.js';
 import { createObserveGuard, wireSocket } from '../../src/collabHub/observeGuard.js';
 import { resolveAuthMode, resolveAuth, buildSocketUrl } from '../../src/collabHub/authMode.js';
 import { fakeSocket } from '../helpers/socket.mjs';
@@ -77,6 +82,25 @@ test('routeShowNamePositionControl route uniquement sound_show_name_position', (
   assert.deepEqual(received, { h: 'sound_show_name_position', v: 'after_author' });
   assert.equal(routeShowNamePositionControl({ header: 'sound_title', values: ['top'] }, () => {}), false);
   assert.deepEqual(SHOW_NAME_POSITION_HEADERS, ['sound_show_name_position']);
+});
+
+test('routeBlockControl route les 8 blocs v2 et les 2 contrôles atomiques', () => {
+  assert.deepEqual(BLOCK_IDS, [
+    'snd_info_3', 'snd_info_1', 'snd_info_2', 'snd_show',
+    'snd_title', 'snd_author', 'snd_img_1', 'snd_img_2',
+  ]);
+  assert.deepEqual(BLOCK_LAYOUT_HEADERS, ['visibility', 'order']);
+  let received = null;
+  assert.equal(routeBlockControl({ header: 'snd_info_3', values: ['Intro'] }, (h, v) => { received = { h, v }; }), true);
+  assert.deepEqual(received, { h: 'snd_info_3', v: ['Intro'] });
+  assert.equal(routeBlockControl({ header: 'visibility', values: ['1 1 0 1 0 0 1 1'] }, () => {}), true);
+  assert.equal(routeBlockControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
+});
+
+test('OBSERVABLE_HEADERS inclut le protocole v2 complet', () => {
+  for (const header of [...BLOCK_IDS, ...BLOCK_LAYOUT_HEADERS]) {
+    assert.ok(OBSERVABLE_HEADERS.includes(header), `header v2 observable : ${header}`);
+  }
 });
 
 // --- Lot 1.1 : observation idempotente (observeGuard / wireSocket) ---

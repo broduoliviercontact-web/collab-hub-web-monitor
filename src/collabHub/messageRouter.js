@@ -37,6 +37,17 @@ export const TEXT_VISIBILITY_HEADERS = [
 // l'image, sans modifier sa valeur ou sa visibilité.
 export const SHOW_NAME_POSITION_HEADERS = ['sound_show_name_position'];
 
+// Protocole v2 (issue #42) : huit blocs ordonnables. Les anciens headers
+// sound_* restent observés pendant la migration mais ne sont plus requis par
+// le nouveau patch Max.
+export const BLOCK_IDS = [
+  'snd_info_3', 'snd_info_1', 'snd_info_2', 'snd_show',
+  'snd_title', 'snd_author', 'snd_img_1', 'snd_img_2',
+];
+export const BLOCK_TEXT_HEADERS = BLOCK_IDS.slice(0, 6);
+export const BLOCK_IMAGE_HEADERS = BLOCK_IDS.slice(6);
+export const BLOCK_LAYOUT_HEADERS = ['visibility', 'order'];
+
 // Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler
 // son activité. Jamais affiché comme contenu, jamais persisté.
 export const HEARTBEAT_HEADER = 'sound_heartbeat';
@@ -58,7 +69,8 @@ export const STREAM_HEADERS = [
 // Tous les headers à observer au démarrage : contenus, image éphémère et heartbeat.
 export const OBSERVABLE_HEADERS = [
   ...KNOWN_HEADERS, ...IMAGE_HEADERS, ...TEXT_VISIBILITY_HEADERS,
-  ...SHOW_NAME_POSITION_HEADERS, HEARTBEAT_HEADER,
+  ...SHOW_NAME_POSITION_HEADERS, ...BLOCK_IDS, ...BLOCK_LAYOUT_HEADERS,
+  HEARTBEAT_HEADER,
 ];
 
 // Normalise data.values en chaîne.
@@ -105,5 +117,16 @@ export function routeShowNamePositionControl(data, onUpdate) {
   const { header } = data;
   if (!SHOW_NAME_POSITION_HEADERS.includes(header)) return false;
   onUpdate(header, normalizeValue(data.values));
+  return true;
+}
+
+// Route les nouveaux contrôles de bloc sans les confondre avec les six champs
+// historiques. Les listes restent brutes : leur validation stricte est faite
+// par le runtime de mise en page afin de ne jamais appliquer un état partiel.
+export function routeBlockControl(data, onUpdate) {
+  if (!data || typeof data !== 'object') return false;
+  const { header } = data;
+  if (![...BLOCK_IDS, ...BLOCK_LAYOUT_HEADERS].includes(header)) return false;
+  onUpdate(header, data.values);
   return true;
 }

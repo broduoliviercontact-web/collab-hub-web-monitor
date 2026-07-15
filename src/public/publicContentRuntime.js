@@ -43,6 +43,9 @@ export function createContentRuntime({ doc, els, storage, now }) {
       renderField(header, state.get(header), els, doc);
       return true;
     },
+    markExternalContentUpdate() {
+      freshness.onContentUpdate();
+    },
     // Applique un header de contenu (sound_* via routeControl, ou heartbeat).
     // Rend le champ, rafraîchit la fraîcheur contenu, persiste. Retourne le
     // timestamp sauvegardé (ou null si heartbeat / non routé / sauvegarde

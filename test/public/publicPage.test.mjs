@@ -294,6 +294,41 @@ test('6d. les six contenus masqués retirent la carte vide et sa bordure', async
   r.teardown();
 });
 
+test('6e. protocole v2 : snd_*, visibility et order pilotent la carte atomiquement', async () => {
+  const { conn, doc, storage, r } = mount();
+  await flush();
+
+  conn.getOpts().onControl({ header: 'snd_info_3', values: 'Intro v2' });
+  assert.equal(doc.getElementById('snd-info-3').textContent, 'Intro v2');
+  assert.equal(doc.getElementById('snd-info-3-wrap').hidden, false);
+  assert.equal(doc.getElementById('sound-title-wrap').hidden, true, 'les champs v2 non renseignés ne gardent pas les valeurs par défaut');
+  assert.equal(storage.getItem(STORAGE_KEY), null, 'v2 reste éphémère pour cette itération');
+
+  conn.getOpts().onControl({ header: 'snd_title', values: 'Titre v2' });
+  conn.getOpts().onControl({ header: 'snd_img_2', values: 'https://example.com/second.png' });
+  conn.getOpts().onControl({ header: 'visibility', values: '1 0 0 0 1 0 0 1' });
+  assert.equal(doc.getElementById('snd-info-3-wrap').hidden, false);
+  assert.equal(doc.getElementById('sound-title-wrap').hidden, false);
+  assert.equal(doc.getElementById('snd-img-2-wrap').hidden, false);
+  assert.equal(doc.getElementById('sound-subtitle-wrap').hidden, true);
+
+  conn.getOpts().onControl({ header: 'order', values: '4 0 7 1 2 3 5 6' });
+  assert.deepEqual(doc._card._placements.slice(-8), [
+    ['append', doc.getElementById('sound-title-wrap')],
+    ['append', doc.getElementById('snd-info-3-wrap')],
+    ['append', doc.getElementById('snd-img-2-wrap')],
+    ['append', doc.getElementById('sound-subtitle-wrap')],
+    ['append', doc.getElementById('sound-description-wrap')],
+    ['append', doc.getElementById('sound-show-name-wrap')],
+    ['append', doc.getElementById('sound-author-wrap')],
+    ['append', doc.getElementById('sound-image-wrap')],
+  ]);
+
+  conn.getOpts().onControl({ header: 'sound_title', values: 'Ancien titre ignoré' });
+  assert.equal(doc.getElementById('sound-title').textContent, 'Titre v2');
+  r.teardown();
+});
+
 test('7. compteur dauditeurs : stream_listener_count -> libellé rendu dans lk-listener-count', async () => {
   const { conn, doc, r } = mount();
   await flush();

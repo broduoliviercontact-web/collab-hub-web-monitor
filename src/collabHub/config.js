@@ -10,12 +10,13 @@
 // le passer ou non (le publisher reste anonyme par construction).
 
 const DEFAULT_SERVER_URL = 'https://server.collab-hub.io';
+const DEFAULT_NAMESPACE = 'hub';
 
 // 'CH-Web' (page publique) | 'CH-CR' (Control Room). Le préfixe identifie l'origine
 // côté serveur sans transporter de secret.
 export function resolveCollabHubConfig({ env, usernamePrefix = 'CH-Web' }) {
   const serverUrl = (env.VITE_COLLAB_HUB_URL || DEFAULT_SERVER_URL).replace(/\/+$/, '');
-  const namespace = (env.VITE_COLLAB_HUB_NAMESPACE ?? '').replace(/^\/+|\/+$/g, '');
+  const namespace = (env.VITE_COLLAB_HUB_NAMESPACE ?? DEFAULT_NAMESPACE).replace(/^\/+|\/+$/g, '');
   const authMode = env.VITE_COLLAB_HUB_AUTH_MODE;
   const username = `${usernamePrefix}_${Math.floor(Math.random() * 1000)}`;
   return { serverUrl, namespace, authMode, username };
