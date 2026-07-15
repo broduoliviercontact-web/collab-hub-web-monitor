@@ -277,6 +277,23 @@ test('6c. visibilité des textes : masque sans effacer et reste hors localStorag
   r.teardown();
 });
 
+test('6d. les six contenus masqués retirent la carte vide et sa bordure', async () => {
+  const { conn, doc, r } = mount();
+  await flush();
+
+  for (const header of [
+    'sound_show_name_visible', 'sound_title_visible', 'sound_author_visible',
+    'sound_subtitle_visible', 'sound_description_visible', 'sound_link_visible',
+  ]) {
+    conn.getOpts().onControl({ header, values: 'false' });
+  }
+  assert.equal(doc._card.hidden, true, 'aucune bordure de carte ne reste affichée');
+
+  conn.getOpts().onControl({ header: 'sound_title_visible', values: 'true' });
+  assert.equal(doc._card.hidden, false, 'la carte revient dès qu un contenu est réaffiché');
+  r.teardown();
+});
+
 test('7. compteur dauditeurs : stream_listener_count -> libellé rendu dans lk-listener-count', async () => {
   const { conn, doc, r } = mount();
   await flush();

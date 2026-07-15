@@ -11,7 +11,7 @@
 export function createCollabHubRuntime({
   connect, serverUrl, namespace, username, authMode,
   stream, content, image, showNamePosition, textVisibility, diag, dbg = () => {},
-  recomputePublicState, renderStreamState, onConnected = () => {}, onError,
+  recomputePublicState, renderStreamState, syncProgramCardVisibility = () => {}, onConnected = () => {}, onError,
 }) {
   let collabApi = null;
   let connStatus = null;
@@ -29,16 +29,19 @@ export function createCollabHubRuntime({
       return;
     }
     if (image && image.applyControl(data)) {
+      syncProgramCardVisibility();
       dbg('received image control', data.header, data.values);
       diag.logControl(data);
       return;
     }
     if (showNamePosition && showNamePosition.applyControl(data)) {
+      syncProgramCardVisibility();
       dbg('received show name position control', data.header, data.values);
       diag.logControl(data);
       return;
     }
     if (textVisibility && textVisibility.applyControl(data, content.rerender)) {
+      syncProgramCardVisibility();
       dbg('received text visibility control', data.header, data.values);
       diag.logControl(data);
       return;
@@ -47,6 +50,7 @@ export function createCollabHubRuntime({
     // sauvegardé (null si heartbeat / non routé / sauvegarde échouée).
     const savedAt = content.applyControl(data);
     if (textVisibility) textVisibility.applyForContent(data?.header);
+    syncProgramCardVisibility();
     if (savedAt) diag.setLocalSaved(savedAt);
     recomputePublicState();
     diag.logControl(data);
