@@ -288,10 +288,9 @@ secrète** — ce sont des valeurs publiques, cuites dans le bundle au build.
 | `VITE_COLLAB_HUB_NAMESPACE` | `hub` (sans slash initial — le code stripped les slashes) |
 | `VITE_COLLAB_HUB_AUTH_MODE` | `anonymous` (socket direct, pas de `/api/v1/auth/guest`) |
 
-> `VITE_COLLAB_HUB_NAMESPACE` est **obligatoire** : sans elle, le bundle
-> construirait avec un namespace vide (racine `/`) et ne recevrait aucun
-> contrôle publié par Max (qui utilise `/hub`). La valeur `hub` correspond à
-> celle qui fonctionne localement (`.env`).
+> `VITE_COLLAB_HUB_NAMESPACE` doit rester aligné avec Max. Si elle est absente,
+> le code utilise `hub` par défaut. La valeur `hub` correspond à celle qui
+> fonctionne localement (`.env`) et au client Max par défaut.
 >
 > `VITE_COLLAB_HUB_AUTH_MODE=anonymous` garantit que le site public ne génère
 > **ni `OPTIONS` ni `POST`** vers `/api/v1/auth/guest` (route absente du
