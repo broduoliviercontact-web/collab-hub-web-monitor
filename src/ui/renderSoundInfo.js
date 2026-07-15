@@ -241,16 +241,16 @@ export function renderField(header, value, els, doc = (typeof document !== 'unde
       applyShowName(value, els, doc);
       break;
     case 'sound_title':
-      applyMarkup(value, els.title, doc);
+      renderMarkup(value, els.title, doc);
       break;
     case 'sound_author':
-      applyMarkup(value, els.author, doc);
+      renderMarkup(value, els.author, doc);
       break;
     case 'sound_subtitle':
-      applyMarkup(value, els.subtitle, doc);
+      renderMarkup(value, els.subtitle, doc);
       break;
     case 'sound_description':
-      applyMarkup(value, els.description, doc);
+      renderMarkup(value, els.description, doc);
       break;
     case 'sound_link':
       applyLink(value, els, doc);
@@ -262,7 +262,7 @@ export function renderField(header, value, els, doc = (typeof document !== 'unde
 
 function applyShowName(value, els, doc) {
   const source = typeof value === 'string' ? value : String(value ?? '');
-  applyMarkup(source, els.showName, doc);
+  renderMarkup(source, els.showName, doc);
   if (els.showNameSection) els.showNameSection.hidden = source.trim() === '';
 }
 
@@ -303,7 +303,7 @@ function buildMarkupNodes(doc, segments) {
   return nodes;
 }
 
-function applyMarkup(value, element, doc) {
+export function renderMarkup(value, element, doc = (typeof document !== 'undefined' ? document : null)) {
   if (!element) return;
   const source = typeof value === 'string' ? value : String(value ?? '');
   if (!doc || typeof doc.createElement !== 'function' || typeof doc.createTextNode !== 'function' || typeof element.replaceChildren !== 'function') {

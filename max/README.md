@@ -108,10 +108,31 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   `top` place le nom tout en haut de la carte, même devant une image placée en
   haut. **ENVOYER POSITION NOM D'ÉMISSION** utilise `send/receive ch_showpos1`
   et le même double passage register/deliver.
-- **Zone 7 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
+- **Zone 7 — PROTOCOLE V2 ATOMIQUE** (issue #42) : dix boîtes message pilotent
+  le nouveau contrat générique : `snd_info_3`, `snd_info_1`, `snd_info_2`,
+  `snd_show`, `snd_title`, `snd_author`, `snd_img_1`, `snd_img_2`,
+  `visibility` et `order`. Le bouton
+  **ENVOYER LES 8 BLOCS + VISIBILITY + ORDER** utilise `send/receive ch_v2_10`
+  avec le même double passage register/deliver. En mode v2, la page web
+  n'utilise plus les valeurs par défaut de l'ancien mode `sound_*` : seuls les
+  blocs `snd_*` renseignés et visibles apparaissent.
+
+  `visibility` attend exactement 8 valeurs `0` ou `1`, dans cet ordre :
+  `0 snd_info_3`, `1 snd_info_1`, `2 snd_info_2`, `3 snd_show`,
+  `4 snd_title`, `5 snd_author`, `6 snd_img_1`, `7 snd_img_2`.
+  Exemple : `1 0 0 0 1 0 1 0` affiche seulement `snd_info_3`,
+  `snd_title` et `snd_img_1` si ces blocs ont du contenu.
+
+  `order` attend une permutation exacte de `0 1 2 3 4 5 6 7`.
+  Exemple : `0 4 5 1 6 2 7 3` place `snd_info_3` tout en haut, puis le titre,
+  l'auteur, `snd_info_1`, la première image, `snd_info_2`, la seconde image,
+  puis `snd_show`. Une liste incomplète, dupliquée ou hors plage est ignorée.
+  `snd_img_1` et `snd_img_2` acceptent les mêmes sources sûres que les images
+  historiques : `https://...` ou `/images/...`.
+- **Zone 8 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
-- **Zone 8 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
+- **Zone 9 — HEARTBEAT** (Lot 3B) : publie `sound_heartbeat` toutes les 10 s
   tant que le CH-Client est connecté. `connected` (sortie 1 de
   `route serverMessage connected`) pilote un `toggle` qui démarre/arrête
   `metro 10000` ; chaque tick -> `push all sound_heartbeat 1` vers
@@ -180,7 +201,14 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
     `after_title`, `after_author`, `after_subtitle` et `bottom`, puis cliquer
     **ENVOYER POSITION NOM D'ÉMISSION**. Avec une image en `top`, vérifier que
     le nom reste vraiment le premier bloc de la carte.
-12. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
+12. Descendre à **PROTOCOLE V2 ATOMIQUE** : cliquer
+    **ENVOYER LES 8 BLOCS + VISIBILITY + ORDER**. Vérifier que `snd_info_3`
+    apparaît tout en haut, que les deux images `/images/ezdac.png` et
+    `/images/spectre_chroma.png` se chargent, puis modifier `visibility` en
+    `1 0 0 0 1 0 0 0` pour ne garder que `snd_info_3` et `snd_title`.
+    Modifier ensuite `order`, par exemple `4 0 1 2 3 5 6 7`, et renvoyer le
+    groupe : le titre doit passer au-dessus de `snd_info_3`.
+13. Tester la reconnexion : couper le réseau, observer `déconnecté` côté web et
    `connected 0` côté Max, rétablir, renvoyer un champ → nouvel événement.
 
 ## Dépannage

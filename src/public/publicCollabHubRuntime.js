@@ -1,3 +1,7 @@
+import {
+  IMAGE_HEADERS, KNOWN_HEADERS, SHOW_NAME_POSITION_HEADERS, TEXT_VISIBILITY_HEADERS,
+} from '../collabHub/messageRouter.js';
+
 // Runtime Collab-Hub public (issue #7). Extrait de mountPublicPage().
 //
 // Responsabilités : connexion socket (connect injectée), dispatch de routage des
@@ -8,9 +12,16 @@
 // injectés), ne connaît pas LiveKit, ne gère pas la persistance métier (déléguée
 // au runtime contenu). Les snapshots diag sont bâtis par les runtime stream/listener
 // via collab.getApi() ; le montage diag est orchestré par la racine via onConnected.
+const LEGACY_VISUAL_HEADERS = new Set([
+  ...KNOWN_HEADERS,
+  ...IMAGE_HEADERS,
+  ...SHOW_NAME_POSITION_HEADERS,
+  ...TEXT_VISIBILITY_HEADERS,
+]);
+
 export function createCollabHubRuntime({
   connect, serverUrl, namespace, username, authMode,
-  stream, content, image, showNamePosition, textVisibility, diag, dbg = () => {},
+  stream, content, image, showNamePosition, textVisibility, blocks, diag, dbg = () => {},
   recomputePublicState, renderStreamState, syncProgramCardVisibility = () => {}, onConnected = () => {}, onError,
 }) {
   let collabApi = null;
@@ -26,6 +37,22 @@ export function createCollabHubRuntime({
       recomputePublicState();
       diag.logControl(data);
       diag.refreshStream();
+      return;
+    }
+    const blockResult = blocks?.applyControl(data);
+    if (blockResult?.handled) {
+      if (blockResult.contentChanged) content.markExternalContentUpdate();
+      syncProgramCardVisibility();
+      if (blockResult.valid) dbg('received v2 block control', data.header, data.values);
+      else dbg('ignored invalid v2 block control', data.header, data.values, blockResult.reason);
+      diag.logControl(data);
+      recomputePublicState();
+      diag.refreshFreshness(content.freshness);
+      return;
+    }
+    if (blocks?.isActive() && LEGACY_VISUAL_HEADERS.has(data?.header)) {
+      dbg('ignored legacy visual control after v2 activation', data.header);
+      diag.logControl(data);
       return;
     }
     if (image && image.applyControl(data)) {

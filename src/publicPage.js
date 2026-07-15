@@ -23,6 +23,7 @@ import { createContentRuntime } from './public/publicContentRuntime.js';
 import { createImageRuntime } from './public/publicImageRuntime.js';
 import { createShowNamePositionRuntime } from './public/publicShowNameRuntime.js';
 import { createTextVisibilityRuntime } from './public/publicTextVisibilityRuntime.js';
+import { createBlockLayoutRuntime } from './public/publicBlockLayoutRuntime.js';
 import { createCollabHubRuntime } from './public/publicCollabHubRuntime.js';
 
 // Factory socket par défaut — connectCollabHub est un import statique, l'enrober
@@ -87,6 +88,8 @@ export function mountPublicPage(deps = {}) {
     card: doc.querySelector('main.card'),
     showNameSection: doc.getElementById('sound-show-name-wrap'),
     showName: doc.getElementById('sound-show-name'),
+    info3Section: doc.getElementById('snd-info-3-wrap'),
+    info3: doc.getElementById('snd-info-3'),
     titleSection: doc.getElementById('sound-title-wrap'),
     authorSection: doc.getElementById('sound-author-wrap'),
     title: doc.getElementById('sound-title'),
@@ -99,9 +102,13 @@ export function mountPublicPage(deps = {}) {
     link: doc.getElementById('sound-link'),
     imageWrap: doc.getElementById('sound-image-wrap'),
     image: doc.getElementById('sound-image'),
+    image2Wrap: doc.getElementById('snd-img-2-wrap'),
+    image2: doc.getElementById('snd-img-2'),
     statusText: doc.getElementById('status-text'),
     statusDot: doc.getElementById('status-dot'),
   };
+  if (els.info3Section) els.info3Section.hidden = true;
+  if (els.image2Wrap) els.image2Wrap.hidden = true;
 
   // --- Contenu (Lot 3A/3B) : 6 champs sound_*, persistance locale, fraîcheur
   // contenu Max. Extrait dans publicContentRuntime (issue #7). Le runtime expose
@@ -146,16 +153,33 @@ export function mountPublicPage(deps = {}) {
     },
   });
 
+  const blocks = createBlockLayoutRuntime({
+    doc,
+    els: {
+      card: els.card,
+      info3Section: els.info3Section, info3: els.info3,
+      showNameSection: els.showNameSection, showName: els.showName,
+      titleSection: els.titleSection, title: els.title,
+      authorSection: els.authorSection, author: els.author,
+      subtitleSection: els.subtitleSection, subtitle: els.subtitle,
+      descriptionSection: els.descriptionSection, description: els.description,
+      imageWrap: els.imageWrap, image: els.image,
+      image2Wrap: els.image2Wrap, image2: els.image2,
+    },
+  });
+
   // Une carte éditoriale vide ne doit laisser ni fond ni bordure à l'écran.
   // Le lecteur direct est un bloc séparé et reste donc toujours disponible.
   function syncProgramCardVisibility() {
     if (!els.card) return;
     const sections = [
       els.showNameSection,
+      els.info3Section,
       els.titleSection,
       els.authorSection,
       els.subtitleSection,
       els.imageWrap,
+      els.image2Wrap,
       els.descriptionSection,
     ];
     els.card.hidden = !sections.some((section) => section && !section.hidden);
@@ -204,7 +228,7 @@ export function mountPublicPage(deps = {}) {
   // referont le pont vers le reste (statut public, montage diag).
   const collab = createCollabHubRuntime({
     connect, serverUrl: SERVER_URL, namespace: NAMESPACE, username: USERNAME, authMode: AUTH_MODE,
-    stream, content, image, showNamePosition, textVisibility, diag, dbg,
+    stream, content, image, showNamePosition, textVisibility, blocks, diag, dbg,
     recomputePublicState, renderStreamState, syncProgramCardVisibility, onError,
     onConnected: (api) => {
       const diagOpts = {
