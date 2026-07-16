@@ -17,10 +17,10 @@ const TEXT_VISIBILITY_HEADERS = [
 ];
 const SHOW_NAME_POSITION_HEADERS = ['sound_show_name_position'];
 const BLOCK_V2_HEADERS = [
-  'snd_info_3', 'snd_info_1', 'snd_info_2', 'snd_show',
-  'snd_title', 'snd_author', 'snd_img_1', 'snd_img_2',
+  'snd_show', 'snd_title', 'snd_author', 'snd_info_1',
+  'snd_info_2', 'snd_info_3', 'snd_info_4', 'snd_info_5',
 ];
-const BLOCK_V2_LAYOUT_HEADERS = ['visibility', 'order'];
+const BLOCK_V2_LAYOUT_HEADERS = ['visibility', 'block_config'];
 
 let j;
 try { j = JSON.parse(readFileSync(file, 'utf8')); }
@@ -242,12 +242,12 @@ for (const r of showNamePositionReceives) {
 }
 showNamePositionReceiveToPublish === 1 ? pass('receive position -> value box -> tosymbol -> push (2 déclenchements sur 2 passages)') : fail(`${showNamePositionReceiveToPublish}/1 receive position câblé vers un push sûr`);
 
-// Protocole v2 atomique : huit blocs + visibility/order en un groupe.
+// Protocole v2 atomique : huit blocs fixes + visibilité/configuration en un groupe.
 const BLOCK_V2_SEND_NAME = 'ch_v2_10';
 const blockV2Sends = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^send\\s+${BLOCK_V2_SEND_NAME}$`).test((b.text || '').trim()));
 const blockV2Receives = boxes.filter(b => b.maxclass === 'newobj' && new RegExp(`^receive\\s+${BLOCK_V2_SEND_NAME}$`).test((b.text || '').trim()));
 blockV2Sends.length === 1 ? pass(`send ${BLOCK_V2_SEND_NAME} présent (1)`) : fail(`send ${BLOCK_V2_SEND_NAME} attendu unique, trouvé ${blockV2Sends.length}`);
-blockV2Receives.length === 10 ? pass(`10 receive ${BLOCK_V2_SEND_NAME} (8 blocs + visibility/order)`) : fail(`10 receive ${BLOCK_V2_SEND_NAME} attendus, trouvé ${blockV2Receives.length}`);
+blockV2Receives.length === 10 ? pass(`10 receive ${BLOCK_V2_SEND_NAME} (8 blocs + visibility/block_config)`) : fail(`10 receive ${BLOCK_V2_SEND_NAME} attendus, trouvé ${blockV2Receives.length}`);
 const blockV2Trigger = boxes.find(b => b.maxclass === 'newobj' && /^t b b$/.test((b.text || '').trim())
   && destsOf(b.id, 0).some(id => blockV2Sends.some(s => s.id === id)));
 const blockV2Delay = blockV2Trigger && destsOf(blockV2Trigger.id, 1).map(id => byId[id]).find(b => b && /^delay\s+300$/.test((b.text || '').trim()));
@@ -258,7 +258,7 @@ let blockV2ReceiveToPublish = 0;
 for (const r of blockV2Receives) {
   const valueBox = destsOf(r.id, 0).map(id => byId[id]).find(b => b && b.maxclass === 'message');
   const symbolizer = valueBox && destsOf(valueBox.id, 0).map(id => byId[id]).find(b => b && /^tosymbol$/.test((b.text || '').trim()));
-  const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend push all (snd_|visibility$|order$)/.test((b.text || '').trim()));
+  const pub = symbolizer && destsOf(symbolizer.id, 0).map(id => byId[id]).find(b => b && /^prepend push all (snd_|visibility$|block_config$)/.test((b.text || '').trim()));
   if (pub) blockV2ReceiveToPublish++;
 }
 blockV2ReceiveToPublish === 10 ? pass('10 receive v2 -> value box -> tosymbol -> push (20 déclenchements sur 2 passages)') : fail(`${blockV2ReceiveToPublish}/10 receive v2 câblés vers un push sûr`);

@@ -13,10 +13,6 @@
         <p id="sound-show-name" class="show-name"></p>
       </section>
 
-      <section class="block block--info" id="snd-info-3-wrap" hidden>
-        <p id="snd-info-3"></p>
-      </section>
-
       <section class="block block--title" id="sound-title-wrap">
         <h1 id="sound-title">En attente du prochain morceau</h1>
       </section>
@@ -29,19 +25,29 @@
         <p id="sound-subtitle">Connexion à Collab-Hub…</p>
       </section>
 
-      <section class="block block--image" id="sound-image-wrap" hidden>
-        <img id="sound-image" alt="" />
-      </section>
-
-      <section class="block block--image" id="snd-img-2-wrap" hidden>
-        <img id="snd-img-2" alt="" />
-      </section>
-
       <section class="block block--description" id="sound-description-wrap">
         <p id="sound-description">Les informations seront mises à jour depuis Max.</p>
         <p class="link-wrap" id="sound-link-wrap" hidden>
           <a id="sound-link" href="#" target="_blank" rel="noopener noreferrer">En savoir plus</a>
         </p>
+      </section>
+
+      <section class="block block--info" id="snd-info-3-wrap" hidden>
+        <p id="snd-info-3"></p>
+      </section>
+
+      <section class="block block--info" id="snd-info-4-wrap" hidden>
+        <p id="snd-info-4"></p>
+      </section>
+
+      <section class="block block--info" id="snd-info-5-wrap" hidden>
+        <p id="snd-info-5"></p>
+      </section>
+
+      <!-- Compatibilité temporaire avec l'ancien contrôle sound_image_* ; ces
+           images ne font pas partie du registre fixe des huit blocs. -->
+      <section class="block block--image block--legacy-image" id="sound-image-wrap" hidden>
+        <img id="sound-image" alt="" />
       </section>
     </main>
 
