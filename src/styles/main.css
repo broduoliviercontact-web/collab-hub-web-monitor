@@ -55,8 +55,51 @@ main.card {
 .block--show-name { padding-bottom: 12px; background: var(--bg-block-2); border-bottom: none; }
 .block--title { padding-bottom: 8px; border-bottom: none; }
 .block--author { padding-top: 8px; }
-.block--image[hidden],
-.block--info[hidden] { display: none; }
+.block[hidden] { display: none !important; }
+.block--custom-background { background: var(--block-background); }
+.block--custom-foreground,
+.block--custom-foreground > :not(.block-media-image) { color: var(--block-foreground) !important; }
+.block--has-media {
+  display: flex;
+  gap: clamp(14px, 3vw, 28px);
+  align-items: center;
+}
+.block--media-above,
+.block--media-below { flex-direction: column; align-items: stretch; }
+.block--media-above > .block-media-image,
+.block--media-left > .block-media-image { order: -1; }
+.block--media-left > .block-media-image,
+.block--media-right > .block-media-image { max-width: min(45%, 420px); }
+.block-media-image {
+  display: block;
+  max-width: 100%;
+  border-radius: calc(var(--radius) - 2px);
+  flex: 0 1 auto;
+}
+.block--media-background {
+  position: relative;
+  isolation: isolate;
+  min-height: 220px;
+  overflow: hidden;
+}
+.block--media-background::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(5, 8, 12, 0.78), rgba(5, 8, 12, 0.4));
+  pointer-events: none;
+}
+.block--media-background > .block-media-image {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  margin: 0 !important;
+  border-radius: 0;
+}
 .block--drawing-mode {
   display: flex;
   width: 100%;
@@ -133,6 +176,14 @@ h1 {
   font-size: clamp(0.95rem, 2.5vw, 1.05rem);
   line-height: 1.6;
   color: var(--text);
+}
+
+#snd-info-4,
+#snd-info-5 {
+  margin: 0;
+  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+  line-height: 1.6;
+  color: inherit;
 }
 
 .link-wrap { margin: 0; }
@@ -213,6 +264,13 @@ main.card[data-content-fresh="false"] .block {
   .just-updated { animation: none; }
   .status-dot.is-wait { animation: none; }
   * { transition: none !important; }
+}
+
+@media (max-width: 560px) {
+  .block--media-left,
+  .block--media-right { flex-direction: column; align-items: stretch; }
+  .block--media-left > .block-media-image,
+  .block--media-right > .block-media-image { max-width: 100%; }
 }
 
 /* ---------- Mode diagnostic (?debug=1) ---------- */

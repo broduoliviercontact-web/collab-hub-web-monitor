@@ -2745,7 +2745,7 @@
             520,
             20
           ],
-          "text": "PROTOCOLE V2 ATOMIQUE — snd_* + visibility/order"
+          "text": "PROTOCOLE 8 BLOCS FIXES — snd_* + visibility + block_config"
         }
       },
       {
@@ -2760,7 +2760,7 @@
             920,
             20
           ],
-          "text": "Ordre des index : 0 snd_info_3, 1 snd_info_1, 2 snd_info_2, 3 snd_show, 4 snd_title, 5 snd_author, 6 snd_img_1, 7 snd_img_2"
+          "text": "Ordre fixe : 0 snd_show, 1 snd_title, 2 snd_author, 3 snd_info_1, 4 snd_info_2, 5 snd_info_3, 6 snd_info_4, 7 snd_info_5"
         }
       },
       {
@@ -2775,7 +2775,7 @@
             430,
             18
           ],
-          "text": "ENVOYER LES 8 BLOCS + VISIBILITY + ORDER (double push)"
+          "text": "ENVOYER LES 8 BLOCS + VISIBILITY + BLOCK_CONFIG (double push)"
         }
       },
       {
@@ -2860,7 +2860,7 @@
             190,
             22
           ],
-          "text": "snd_info_3"
+          "text": "snd_show"
         }
       },
       {
@@ -2878,7 +2878,7 @@
             280,
             22
           ],
-          "text": "[Intro v2]{color:FF6B35}"
+          "text": "RADIO 2"
         }
       },
       {
@@ -2914,7 +2914,7 @@
             260,
             22
           ],
-          "text": "prepend push all snd_info_3"
+          "text": "prepend push all snd_show"
         }
       },
       {
@@ -2947,7 +2947,7 @@
             190,
             22
           ],
-          "text": "snd_info_1"
+          "text": "snd_title"
         }
       },
       {
@@ -2965,7 +2965,7 @@
             280,
             22
           ],
-          "text": "Sous-titre v2"
+          "text": "Titre v2"
         }
       },
       {
@@ -3001,7 +3001,7 @@
             260,
             22
           ],
-          "text": "prepend push all snd_info_1"
+          "text": "prepend push all snd_title"
         }
       },
       {
@@ -3034,7 +3034,7 @@
             190,
             22
           ],
-          "text": "snd_info_2"
+          "text": "snd_author"
         }
       },
       {
@@ -3052,7 +3052,7 @@
             360,
             22
           ],
-          "text": "Description v2 avec **gras** et *italique*"
+          "text": "Artiste v2"
         }
       },
       {
@@ -3088,7 +3088,7 @@
             260,
             22
           ],
-          "text": "prepend push all snd_info_2"
+          "text": "prepend push all snd_author"
         }
       },
       {
@@ -3121,7 +3121,7 @@
             190,
             22
           ],
-          "text": "snd_show"
+          "text": "snd_info_1"
         }
       },
       {
@@ -3139,7 +3139,7 @@
             280,
             22
           ],
-          "text": "RADIO 2"
+          "text": "Sous-titre v2"
         }
       },
       {
@@ -3175,7 +3175,7 @@
             230,
             22
           ],
-          "text": "prepend push all snd_show"
+          "text": "prepend push all snd_info_1"
         }
       },
       {
@@ -3208,7 +3208,7 @@
             190,
             22
           ],
-          "text": "snd_title"
+          "text": "snd_info_2"
         }
       },
       {
@@ -3226,7 +3226,7 @@
             280,
             22
           ],
-          "text": "Titre v2"
+          "text": "Description v2 avec **gras** et *italique*"
         }
       },
       {
@@ -3262,7 +3262,7 @@
             260,
             22
           ],
-          "text": "prepend push all snd_title"
+          "text": "prepend push all snd_info_2"
         }
       },
       {
@@ -3295,7 +3295,7 @@
             190,
             22
           ],
-          "text": "snd_author"
+          "text": "snd_info_3"
         }
       },
       {
@@ -3313,7 +3313,7 @@
             280,
             22
           ],
-          "text": "Artiste v2"
+          "text": "Informations complémentaires"
         }
       },
       {
@@ -3349,7 +3349,7 @@
             260,
             22
           ],
-          "text": "prepend push all snd_author"
+          "text": "prepend push all snd_info_3"
         }
       },
       {
@@ -3382,7 +3382,7 @@
             190,
             22
           ],
-          "text": "snd_img_1"
+          "text": "snd_info_4"
         }
       },
       {
@@ -3400,7 +3400,7 @@
             280,
             22
           ],
-          "text": "/images/ezdac.png"
+          "text": "Bloc canvas ou média"
         }
       },
       {
@@ -3436,7 +3436,7 @@
             260,
             22
           ],
-          "text": "prepend push all snd_img_1"
+          "text": "prepend push all snd_info_4"
         }
       },
       {
@@ -3469,7 +3469,7 @@
             190,
             22
           ],
-          "text": "snd_img_2"
+          "text": "snd_info_5"
         }
       },
       {
@@ -3487,7 +3487,7 @@
             280,
             22
           ],
-          "text": "/images/spectre_chroma.png"
+          "text": "Dernier bloc"
         }
       },
       {
@@ -3523,7 +3523,7 @@
             260,
             22
           ],
-          "text": "prepend push all snd_img_2"
+          "text": "prepend push all snd_info_5"
         }
       },
       {
@@ -3643,7 +3643,7 @@
             190,
             22
           ],
-          "text": "order"
+          "text": "block_config"
         }
       },
       {
@@ -3661,7 +3661,7 @@
             280,
             22
           ],
-          "text": "0 4 5 1 6 2 7 3"
+          "text": "snd_show image_url /images/ezdac.png"
         }
       },
       {
@@ -3697,7 +3697,7 @@
             230,
             22
           ],
-          "text": "prepend push all order"
+          "text": "prepend push all block_config"
         }
       },
       {

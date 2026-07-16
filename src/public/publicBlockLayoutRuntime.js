@@ -1,31 +1,30 @@
-// Runtime du protocole v2 (issue #42). Les huit blocs partagent un état de
-// visibilité et un ordre atomiques, séparés des anciens contrôles sound_*.
+// Runtime des huit blocs fixes et composables (issues #42, #54 et #55).
 import {
-  BLOCK_IDS, BLOCK_IMAGE_HEADERS, BLOCK_TEXT_HEADERS, normalizeValue, routeBlockControl,
+  BLOCK_CONFIG_HEADER, BLOCK_IDS, BLOCK_TEXT_HEADERS, normalizeValue, routeBlockControl,
 } from '../collabHub/messageRouter.js';
-import { isSafeImageSource } from '../ui/renderSoundImage.js';
 import { renderMarkup } from '../ui/renderSoundInfo.js';
+import { configKey, createDefaultBlockConfig, parseBlockConfig } from './composableBlockConfig.js';
 
 const SECTION_KEYS = {
-  snd_info_3: 'info3Section',
-  snd_info_1: 'subtitleSection',
-  snd_info_2: 'descriptionSection',
   snd_show: 'showNameSection',
   snd_title: 'titleSection',
   snd_author: 'authorSection',
-  snd_img_1: 'imageWrap',
-  snd_img_2: 'image2Wrap',
+  snd_info_1: 'subtitleSection',
+  snd_info_2: 'descriptionSection',
+  snd_info_3: 'info3Section',
+  snd_info_4: 'info4Section',
+  snd_info_5: 'info5Section',
 };
 
 const CONTENT_KEYS = {
-  snd_info_3: 'info3',
-  snd_info_1: 'subtitle',
-  snd_info_2: 'description',
   snd_show: 'showName',
   snd_title: 'title',
   snd_author: 'author',
-  snd_img_1: 'image',
-  snd_img_2: 'image2',
+  snd_info_1: 'subtitle',
+  snd_info_2: 'description',
+  snd_info_3: 'info3',
+  snd_info_4: 'info4',
+  snd_info_5: 'info5',
 };
 
 const DEFAULT_BLOCK_MODE = 'content';
@@ -62,14 +61,6 @@ export function parseBlockVisibility(values) {
   return tokens.map((token) => token === '1');
 }
 
-export function parseBlockOrder(values) {
-  const tokens = listTokens(values);
-  if (tokens.length !== BLOCK_IDS.length || tokens.some((token) => !/^\d+$/.test(token))) return null;
-  const order = tokens.map(Number);
-  if (new Set(order).size !== BLOCK_IDS.length || order.some((index) => index < 0 || index >= BLOCK_IDS.length)) return null;
-  return order;
-}
-
 export function parseBlockModes(values) {
   const tokens = listTokens(values);
   if (tokens.length !== BLOCK_IDS.length) return null;
@@ -92,18 +83,27 @@ export function parseDrawingAlign(values) {
 
 export function createBlockLayoutRuntime({ els, doc }) {
   const values = Object.fromEntries(BLOCK_IDS.map((id) => [id, '']));
+  const configs = Object.fromEntries(BLOCK_IDS.map((id) => [id, createDefaultBlockConfig()]));
   let visibility = BLOCK_IDS.map(() => true);
-  let order = BLOCK_IDS.map((_, index) => index);
   let modes = BLOCK_IDS.map(() => DEFAULT_BLOCK_MODE);
   let drawingPreset = 'crosshair';
   let drawingAlign = 'left';
   let active = false;
   const drawingCanvases = new Map();
+  const mediaImages = new Map();
 
-  function place(orderToApply) {
-    if (!els?.card || typeof els.card.appendChild !== 'function') return;
-    for (const index of orderToApply) {
-      const section = els[SECTION_KEYS[BLOCK_IDS[index]]];
+  function placeFixedRegistry() {
+    if (!els?.card) return;
+    if (typeof els.card.insertBefore === 'function') {
+      [...BLOCK_IDS].reverse().forEach((id) => {
+        const section = els[SECTION_KEYS[id]];
+        if (section) els.card.insertBefore(section, els.card.firstChild || null);
+      });
+      return;
+    }
+    if (typeof els.card.appendChild !== 'function') return;
+    for (const id of BLOCK_IDS) {
+      const section = els[SECTION_KEYS[id]];
       if (section) els.card.appendChild(section);
     }
   }
@@ -216,10 +216,69 @@ export function createBlockLayoutRuntime({ els, doc }) {
     for (const canvas of drawingCanvases.values()) drawCanvasPlaceholder(canvas, drawingPreset);
   }
 
+  function ensureMediaImage(id) {
+    if (mediaImages.has(id)) return mediaImages.get(id);
+    const section = els?.[SECTION_KEYS[id]];
+    if (!section || !doc || typeof doc.createElement !== 'function') return null;
+    const image = doc.createElement('img');
+    if (!image) return null;
+    image.classList?.add?.('block-media-image');
+    image.setAttribute?.('alt', '');
+    image.setAttribute?.('loading', 'lazy');
+    image.hidden = true;
+    section.appendChild?.(image);
+    mediaImages.set(id, image);
+    return image;
+  }
+
+  function mediaImageStyle(config) {
+    const margins = {
+      left: ['0', 'auto'],
+      center: ['auto', 'auto'],
+      right: ['auto', '0'],
+    };
+    const [marginLeft, marginRight] = margins[config.imageAlign] || margins.center;
+    return [
+      `width:${config.imageWidth}`,
+      `height:${config.imageHeight}`,
+      `object-fit:${config.imageFit}`,
+      `object-position:${config.imageCrop.replace('-', ' ')}`,
+      `margin-left:${marginLeft}`,
+      `margin-right:${marginRight}`,
+    ].join(';');
+  }
+
+  function syncBlockMedia(id) {
+    const section = els?.[SECTION_KEYS[id]];
+    if (!section) return;
+    const config = configs[id];
+    const positions = ['above', 'below', 'left', 'right', 'background'];
+    positions.forEach((position) => section.classList?.remove?.(`block--media-${position}`));
+    section.classList?.remove?.('block--has-media', 'block--custom-background', 'block--custom-foreground');
+    if (config.backgroundColor) section.classList?.add?.('block--custom-background');
+    if (config.foregroundColor) section.classList?.add?.('block--custom-foreground');
+    section.setAttribute?.('style', [
+      config.backgroundColor ? `--block-background:${config.backgroundColor}` : '',
+      config.foregroundColor ? `--block-foreground:${config.foregroundColor}` : '',
+    ].filter(Boolean).join(';'));
+
+    const image = ensureMediaImage(id);
+    if (!image) return;
+    const visible = config.imageVisible && Boolean(config.imageUrl) && !isDrawingMode(id);
+    image.hidden = !visible;
+    image.setAttribute?.('src', visible ? config.imageUrl : '');
+    image.setAttribute?.('style', mediaImageStyle(config));
+    if (visible) {
+      section.classList?.add?.('block--has-media');
+      section.classList?.add?.(`block--media-${config.imagePosition}`);
+    }
+  }
+
   function syncBlockMode(id) {
     const section = els?.[SECTION_KEYS[id]];
     if (!section) return;
     const content = els?.[CONTENT_KEYS[id]];
+    const mediaImage = mediaImages.get(id);
     const drawing = isDrawingMode(id);
     section.classList?.remove?.('block--drawing-align-left', 'block--drawing-align-center', 'block--drawing-align-right');
     if (drawing) {
@@ -233,12 +292,14 @@ export function createBlockLayoutRuntime({ els, doc }) {
         if (typeof section.appendChild === 'function') section.appendChild(canvas);
       }
       if (content) content.hidden = true;
+      if (mediaImage) mediaImage.hidden = true;
       return;
     }
     section.classList?.remove?.('block--drawing-mode');
     const canvas = drawingCanvases.get(id);
     if (canvas) canvas.hidden = true;
     if (content) content.hidden = false;
+    syncBlockMedia(id);
   }
 
   function applyVisibility() {
@@ -248,9 +309,8 @@ export function createBlockLayoutRuntime({ els, doc }) {
       syncBlockMode(id);
       const hasContent = isDrawingMode(id)
         ? true
-        : BLOCK_IMAGE_HEADERS.includes(id)
-        ? isSafeImageSource(values[id])
-        : String(values[id] ?? '').trim() !== '';
+        : String(values[id] ?? '').trim() !== ''
+          || (configs[id].imageVisible && Boolean(configs[id].imageUrl));
       section.hidden = !visibility[index] || !hasContent;
     }
   }
@@ -258,24 +318,13 @@ export function createBlockLayoutRuntime({ els, doc }) {
   function activate() {
     if (active) return;
     active = true;
-    place(order);
+    placeFixedRegistry();
     applyVisibility();
   }
 
   function renderText(id, value) {
     const target = els?.[CONTENT_KEYS[id]];
     renderMarkup(value, target, doc);
-  }
-
-  function renderImage(id, value) {
-    const image = els?.[CONTENT_KEYS[id]];
-    if (!image) return;
-    if (!isSafeImageSource(value)) {
-      image.setAttribute('src', '');
-      return;
-    }
-    image.setAttribute('src', value);
-    image.setAttribute('style', 'width:100%;height:auto;object-fit:contain;object-position:center');
   }
 
   return {
@@ -289,19 +338,25 @@ export function createBlockLayoutRuntime({ els, doc }) {
       if (BLOCK_TEXT_HEADERS.includes(header)) {
         activate();
         values[header] = normalizeValue(rawValues);
+        configs[header].text = values[header];
         renderText(header, values[header]);
         applyVisibility();
         return { handled: true, valid: true, contentChanged: true };
       }
 
-      if (BLOCK_IMAGE_HEADERS.includes(header)) {
-        const value = normalizeValue(rawValues).trim();
-        if (value !== '' && !isSafeImageSource(value)) return { handled: true, valid: false, reason: 'image_invalide' };
+      if (header === BLOCK_CONFIG_HEADER) {
+        const update = parseBlockConfig(rawValues);
+        if (!update) return { handled: true, valid: false, reason: 'block_config_invalide' };
         activate();
-        values[header] = value;
-        renderImage(header, value);
+        const key = configKey(update.property);
+        configs[update.blockId][key] = update.value;
+        if (update.property === 'text') {
+          values[update.blockId] = update.value;
+          renderText(update.blockId, update.value);
+        }
+        syncBlockMedia(update.blockId);
         applyVisibility();
-        return { handled: true, valid: true, contentChanged: true };
+        return { handled: true, valid: true, contentChanged: update.property === 'text' };
       }
 
       if (header === 'visibility') {
@@ -341,18 +396,14 @@ export function createBlockLayoutRuntime({ els, doc }) {
         return { handled: true, valid: true, contentChanged: false };
       }
 
-      const nextOrder = parseBlockOrder(rawValues);
-      if (!nextOrder) return { handled: true, valid: false, reason: 'order_invalide' };
-      activate();
-      order = nextOrder;
-      place(order);
-      return { handled: true, valid: true, contentChanged: false };
+      return { handled: true, valid: false, reason: 'controle_bloc_inconnu' };
     },
     isActive: () => active,
     snapshot: () => ({
       values: { ...values },
+      configs: Object.fromEntries(BLOCK_IDS.map((id) => [id, { ...configs[id] }])),
       visibility: [...visibility],
-      order: [...order],
+      order: BLOCK_IDS.map((_, index) => index),
       modes: [...modes],
       drawingPreset,
       drawingAlign,
