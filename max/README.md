@@ -108,10 +108,10 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   `top` place le nom tout en haut de la carte, même devant une image placée en
   haut. **ENVOYER POSITION NOM D'ÉMISSION** utilise `send/receive ch_showpos1`
   et le même double passage register/deliver.
-- **Zone 7 — PROTOCOLE V2 ATOMIQUE** (issue #42) : dix boîtes message pilotent
+- **Zone 7 — PROTOCOLE V2 ATOMIQUE** (issue #42) : le site accepte huit boîtes message pilotant
   le nouveau contrat générique : `snd_info_3`, `snd_info_1`, `snd_info_2`,
   `snd_show`, `snd_title`, `snd_author`, `snd_img_1`, `snd_img_2`,
-  `visibility` et `order`. Le bouton
+  `visibility`, `order`, `mode`, `drawing_preset` et `drawing_align`. Le bouton
   **ENVOYER LES 8 BLOCS + VISIBILITY + ORDER** utilise `send/receive ch_v2_10`
   avec le même double passage register/deliver. En mode v2, la page web
   n'utilise plus les valeurs par défaut de l'ancien mode `sound_*` : seuls les
@@ -129,6 +129,18 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   puis `snd_show`. Une liste incomplète, dupliquée ou hors plage est ignorée.
   `snd_img_1` et `snd_img_2` acceptent les mêmes sources sûres que les images
   historiques : `https://...` ou `/images/...`.
+
+  `mode` attend exactement 8 valeurs `content` ou `drawing`, dans le même ordre
+  que `visibility`. Un bloc passé en `drawing` affiche un `canvas` vide fixe
+  `128x128` à la place de son rendu texte/image habituel. Cette première étape
+  prépare les essais graphiques pilotés depuis Max/MSP sans encore définir le
+  protocole complet d'échange de dessin.
+
+  `drawing_preset` choisit l'aperçu dessiné dans ce canvas. Valeurs acceptées :
+  `crosshair`, `grid`, `dot`, `frame`, `bars`.
+
+  `drawing_align` positionne horizontalement le canvas dans son bloc :
+  `left`, `center` ou `right`.
 - **Zone 8 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.
