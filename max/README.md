@@ -112,7 +112,7 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
   accepte huit boîtes message dans cet ordre immuable : `0 snd_show`,
   `1 snd_title`, `2 snd_author`, `3 snd_info_1`, `4 snd_info_2`,
   `5 snd_info_3`, `6 snd_info_4`, `7 snd_info_5`. Les contrôles associés sont
-  `visibility`, `mode`, `drawing_preset`, `drawing_align` et `block_config`.
+  `visibility` et `block_config`.
   `order`, `snd_img_1` et `snd_img_2` sont retirés du protocole. Le bouton
   **ENVOYER LES 8 BLOCS + VISIBILITY + BLOCK_CONFIG** utilise `send/receive ch_v2_10`
   avec le même double passage register/deliver. En mode v2, la page web
@@ -121,28 +121,19 @@ doit proposer l'abstraction. Le patch ouvrira aussi l'aide via
 
   `visibility` attend exactement 8 valeurs `0` ou `1` dans cet ordre fixe.
   Exemple : `1 1 0 0 0 0 1 0` affiche `snd_show`, `snd_title` et
-  `snd_info_4` si ces blocs ont un texte, une image ou un canvas.
+  `snd_info_4` si ces blocs ont un texte ou une image.
 
   `block_config` suit la forme `<block_id> <propriété> <valeur>`. Exemple :
   `snd_show image_url /images/ezdac.png`, puis
-  `snd_show image_position left`. Chaque bloc accepte `text`, `image_url`,
+  `snd_show image_position left`. Chaque bloc accepte `text`, `text_position`,
+  `font_size`, `image_url`,
   `image_visible`, `image_position`, `image_width`, `image_height`,
   `image_fit`, `image_align`, `image_crop`, `background_color` et
   `foreground_color`. Les positions sont `above`, `below`, `left`, `right` et
   `background`. Les URL non HTTP(S), hors `/images/...`, et les valeurs hors
-  listes fermées sont ignorées sans casser l'affichage.
-
-  `mode` attend exactement 8 valeurs `content` ou `drawing`, dans le même ordre
-  que `visibility`. Un bloc passé en `drawing` affiche un `canvas` vide fixe
-  `128x128` à la place de son rendu texte/image habituel. Cette première étape
-  prépare les essais graphiques pilotés depuis Max/MSP sans encore définir le
-  protocole complet d'échange de dessin.
-
-  `drawing_preset` choisit l'aperçu dessiné dans ce canvas. Valeurs acceptées :
-  `crosshair`, `grid`, `dot`, `frame`, `bars`.
-
-  `drawing_align` positionne horizontalement le canvas dans son bloc :
-  `left`, `center` ou `right`.
+  listes fermées sont ignorées sans casser l'affichage. `text_position`
+  accepte `left`, `center`, `right`, y compris sans image. `font_size` accepte
+  uniquement `8px` à `96px`; `default` rétablit la taille d'origine du bloc.
 - **Zone 8 — MESSAGES SENT TO COLLAB-HUB** : tout envoi est aussi imprimé via
   `print CollabHub-Web-Sender` (console Max) et affiché dans le moniteur de
   chaque ligne.

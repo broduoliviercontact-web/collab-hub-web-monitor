@@ -73,20 +73,7 @@ Le registre Max/MSP est fixe et partagé par le routeur, le DOM et les tests :
 peut pas modifier l'ordre des blocs.
 
 - `visibility` : 8 booléens `0/1`, un par bloc.
-- `mode` : 8 valeurs `content` ou `drawing`.
-- `drawing_preset` : un preset visuel fermé pour les blocs en `drawing`.
-- `drawing_align` : alignement horizontal du canvas dans son bloc.
 - `block_config` : configuration déclarative d'un bloc.
-
-`mode` permet de faire passer n'importe lequel des 8 blocs en `drawing`. Dans
-ce cas, le bloc n'affiche plus son contenu texte/image habituel et rend à la
-place un `canvas` de test fixe `128x128`, vide mais stable, prêt pour les
-essais graphiques pilotés depuis Max/MSP. Comme `visibility`, ce
-mode est éphémère : il ne touche ni le contenu persistant ni `localStorage`.
-
-`drawing_preset` accepte pour l'instant `crosshair`, `grid`, `dot`, `frame` et
-`bars`. `drawing_align` accepte `left`, `center` et `right`. Ces deux headers
-s'appliquent aux blocs actuellement en mode `drawing`.
 
 ### Texte et image dans chaque bloc
 
@@ -97,11 +84,14 @@ push all block_config snd_show image_url /images/ezdac.png
 push all block_config snd_show image_position left
 push all block_config snd_show image_width 96px
 push all block_config snd_show image_fit contain
+push all block_config snd_show text_position center
+push all block_config snd_title font_size 32px
+push all block_config snd_title font_size default
 push all block_config snd_show foreground_color white
 push all block_config snd_title background_color #112233
 ```
 
-Propriétés : `text`, `image_url`, `image_visible`, `image_position`,
+Propriétés : `text`, `text_position`, `font_size`, `image_url`, `image_visible`, `image_position`,
 `image_width`, `image_height`, `image_fit`, `image_align`, `image_crop`,
 `background_color`, `foreground_color`. Les positions sont `above`, `below`,
 `left`, `right`, `background`; les fits `contain`, `cover`, `fill`, `none`.
@@ -109,6 +99,10 @@ Les dimensions acceptent `auto`, `1..2000px` ou `1..100%`. Seules les URL
 `http(s)` et `/images/...`, les couleurs hexadécimales, `black`, `white` et
 `transparent` sont acceptées. Toute configuration invalide est ignorée sans
 modifier l'état courant.
+
+`text_position` accepte `left`, `center` ou `right`, avec ou sans image.
+`font_size` accepte uniquement des pixels entiers de `8px` à `96px`.
+La valeur `default` rétablit la typographie d'origine du seul bloc ciblé.
 
 ## Variables d'environnement
 
