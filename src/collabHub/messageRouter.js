@@ -46,7 +46,7 @@ export const BLOCK_IDS = [
 ];
 export const BLOCK_TEXT_HEADERS = BLOCK_IDS.slice(0, 6);
 export const BLOCK_IMAGE_HEADERS = BLOCK_IDS.slice(6);
-export const BLOCK_LAYOUT_HEADERS = ['visibility', 'order'];
+export const BLOCK_LAYOUT_HEADERS = ['visibility', 'order', 'mode', 'drawing_preset', 'drawing_align'];
 
 // Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler
 // son activité. Jamais affiché comme contenu, jamais persisté.

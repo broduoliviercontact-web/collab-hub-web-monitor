@@ -57,6 +57,29 @@ main.card {
 .block--author { padding-top: 8px; }
 .block--image[hidden],
 .block--info[hidden] { display: none; }
+.block--drawing-mode {
+  display: flex;
+  width: 100%;
+  min-height: 176px;
+  padding: clamp(20px, 4vw, 36px);
+  overflow: hidden;
+  align-items: center;
+  justify-content: flex-start;
+}
+.block--drawing-align-center { justify-content: center; }
+.block--drawing-align-right { justify-content: flex-end; }
+/* Les règles #sound-image { display:block } ne doivent pas réafficher le
+   contenu remplacé : sinon cet élément flex invisible décale le canvas. */
+.block--drawing-mode > [hidden] { display: none !important; }
+.drawing-canvas {
+  display: block;
+  width: 128px;
+  height: 128px;
+  flex: 0 0 auto;
+}
+.drawing-canvas[data-drawing-align="left"] { margin-left: 0; margin-right: auto; }
+.drawing-canvas[data-drawing-align="center"] { margin-left: auto; margin-right: auto; }
+.drawing-canvas[data-drawing-align="right"] { margin-left: auto; margin-right: 0; }
 #sound-image,
 #snd-img-2 {
   display: block;

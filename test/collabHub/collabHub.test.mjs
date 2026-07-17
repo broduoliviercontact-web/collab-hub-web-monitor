@@ -84,16 +84,19 @@ test('routeShowNamePositionControl route uniquement sound_show_name_position', (
   assert.deepEqual(SHOW_NAME_POSITION_HEADERS, ['sound_show_name_position']);
 });
 
-test('routeBlockControl route les 8 blocs v2 et les 2 contrôles atomiques', () => {
+test('routeBlockControl route les 8 blocs v2 et les contrôles drawing associés', () => {
   assert.deepEqual(BLOCK_IDS, [
     'snd_info_3', 'snd_info_1', 'snd_info_2', 'snd_show',
     'snd_title', 'snd_author', 'snd_img_1', 'snd_img_2',
   ]);
-  assert.deepEqual(BLOCK_LAYOUT_HEADERS, ['visibility', 'order']);
+  assert.deepEqual(BLOCK_LAYOUT_HEADERS, ['visibility', 'order', 'mode', 'drawing_preset', 'drawing_align']);
   let received = null;
   assert.equal(routeBlockControl({ header: 'snd_info_3', values: ['Intro'] }, (h, v) => { received = { h, v }; }), true);
   assert.deepEqual(received, { h: 'snd_info_3', v: ['Intro'] });
   assert.equal(routeBlockControl({ header: 'visibility', values: ['1 1 0 1 0 0 1 1'] }, () => {}), true);
+  assert.equal(routeBlockControl({ header: 'mode', values: ['content content content content content content drawing content'] }, () => {}), true);
+  assert.equal(routeBlockControl({ header: 'drawing_preset', values: ['bars'] }, () => {}), true);
+  assert.equal(routeBlockControl({ header: 'drawing_align', values: ['center'] }, () => {}), true);
   assert.equal(routeBlockControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
 });
 

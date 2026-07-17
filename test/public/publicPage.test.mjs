@@ -28,14 +28,24 @@ const { mountPublicPage } = await import('../../src/publicPage.js');
 // Le source est lu pour vérifier que les import() dynamiques littéraux sont
 // conservés (caractérisation du code-splitting, cf. build).
 const PUBLIC_PAGE_SRC = readFileSync(new URL('../../src/publicPage.js', import.meta.url), 'utf8');
+const MAIN_CSS_SRC = readFileSync(new URL('../../src/styles/main.css', import.meta.url), 'utf8');
+
+test('CSS drawing retire réellement le contenu hidden du layout flex', () => {
+  assert.match(MAIN_CSS_SRC, /\.block--drawing-mode\s*>\s*\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+});
 
 // --- Fakes locaux à la suite d'orchestration (un seul domaine) ---
 
 function makeEl() {
   const handlers = {};
+  const classes = new Set();
   return {
     textContent: '', hidden: false, className: '', value: '', id: '', _attrs: {},
-    classList: { add() {}, remove() {}, contains() { return false; } },
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+    },
     setAttribute(k, v) { this._attrs[k] = v; },
     getAttribute(k) { return this._attrs[k]; },
     appendChild(c) { return c; }, append(...c) { return c; }, insertBefore(c) { return c; }, replaceChildren() {},
@@ -294,7 +304,7 @@ test('6d. les six contenus masqués retirent la carte vide et sa bordure', async
   r.teardown();
 });
 
-test('6e. protocole v2 : snd_*, visibility et order pilotent la carte atomiquement', async () => {
+test('6e. protocole v2 : snd_*, visibility, order et mode pilotent la carte atomiquement', async () => {
   const { conn, doc, storage, r } = mount();
   await flush();
 
@@ -311,6 +321,13 @@ test('6e. protocole v2 : snd_*, visibility et order pilotent la carte atomiqueme
   assert.equal(doc.getElementById('sound-title-wrap').hidden, false);
   assert.equal(doc.getElementById('snd-img-2-wrap').hidden, false);
   assert.equal(doc.getElementById('sound-subtitle-wrap').hidden, true);
+
+  conn.getOpts().onControl({ header: 'mode', values: 'content content content content content content drawing content' });
+  assert.equal(doc.getElementById('sound-image-wrap').classList.contains('block--drawing-mode'), true);
+  assert.equal(doc.getElementById('sound-image').hidden, true);
+  conn.getOpts().onControl({ header: 'drawing_preset', values: 'bars' });
+  conn.getOpts().onControl({ header: 'drawing_align', values: 'center' });
+  assert.equal(doc.getElementById('sound-image-wrap').classList.contains('block--drawing-align-center'), true);
 
   conn.getOpts().onControl({ header: 'order', values: '4 0 7 1 2 3 5 6' });
   assert.deepEqual(doc._card._placements.slice(-8), [

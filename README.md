@@ -62,6 +62,27 @@ Séparation : **connexion** (`collabHub/socketClient`) · **routage**
 render) ne dépendent ni de `import.meta.env` ni du `document` global — testables
 en Node.
 
+## Protocole v2 des 8 blocs
+
+Le mode v2 pilote les 8 blocs avec les headers `snd_*`, plus cinq contrôles
+de layout éphémères :
+
+- `visibility` : 8 booléens `0/1`, un par bloc.
+- `order` : permutation exacte de `0` à `7`.
+- `mode` : 8 valeurs `content` ou `drawing`.
+- `drawing_preset` : un preset visuel fermé pour les blocs en `drawing`.
+- `drawing_align` : alignement horizontal du canvas dans son bloc.
+
+`mode` permet de faire passer n'importe lequel des 8 blocs en `drawing`. Dans
+ce cas, le bloc n'affiche plus son contenu texte/image habituel et rend à la
+place un `canvas` de test fixe `128x128`, vide mais stable, prêt pour les
+essais graphiques pilotés depuis Max/MSP. Comme `visibility` et `order`, ce
+mode est éphémère : il ne touche ni le contenu persistant ni `localStorage`.
+
+`drawing_preset` accepte pour l'instant `crosshair`, `grid`, `dot`, `frame` et
+`bars`. `drawing_align` accepte `left`, `center` et `right`. Ces deux headers
+s'appliquent aux blocs actuellement en mode `drawing`.
+
 ## Variables d'environnement
 
 Copier `.env.example` en `.env`. Aucun secret.
