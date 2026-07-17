@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BLOCK_IDS, BLOCK_LAYOUT_HEADERS, IMAGE_HEADERS, KNOWN_HEADERS,
+  BLOCK_IDS, BLOCK_LAYOUT_HEADERS, BLOCK_REGISTRY, IMAGE_HEADERS, KNOWN_HEADERS,
   normalizeValue, OBSERVABLE_HEADERS, routeBlockControl, routeControl,
   routeImageControl, routeShowNamePositionControl, routeTextVisibilityControl,
   SHOW_NAME_POSITION_HEADERS, TEXT_VISIBILITY_HEADERS,
@@ -84,19 +84,21 @@ test('routeShowNamePositionControl route uniquement sound_show_name_position', (
   assert.deepEqual(SHOW_NAME_POSITION_HEADERS, ['sound_show_name_position']);
 });
 
-test('routeBlockControl route les 8 blocs v2 et les contrôles drawing associés', () => {
+test('routeBlockControl route le registre fixe et les contrôles de bloc associés', () => {
   assert.deepEqual(BLOCK_IDS, [
-    'snd_info_3', 'snd_info_1', 'snd_info_2', 'snd_show',
-    'snd_title', 'snd_author', 'snd_img_1', 'snd_img_2',
+    'snd_show', 'snd_title', 'snd_author', 'snd_info_1',
+    'snd_info_2', 'snd_info_3', 'snd_info_4', 'snd_info_5',
   ]);
-  assert.deepEqual(BLOCK_LAYOUT_HEADERS, ['visibility', 'order', 'mode', 'drawing_preset', 'drawing_align']);
+  assert.deepEqual(BLOCK_REGISTRY.map(({ index, id }) => [index, id]), BLOCK_IDS.map((id, index) => [index, id]));
+  assert.deepEqual(BLOCK_LAYOUT_HEADERS, ['visibility', 'block_config']);
   let received = null;
   assert.equal(routeBlockControl({ header: 'snd_info_3', values: ['Intro'] }, (h, v) => { received = { h, v }; }), true);
   assert.deepEqual(received, { h: 'snd_info_3', v: ['Intro'] });
   assert.equal(routeBlockControl({ header: 'visibility', values: ['1 1 0 1 0 0 1 1'] }, () => {}), true);
-  assert.equal(routeBlockControl({ header: 'mode', values: ['content content content content content content drawing content'] }, () => {}), true);
-  assert.equal(routeBlockControl({ header: 'drawing_preset', values: ['bars'] }, () => {}), true);
-  assert.equal(routeBlockControl({ header: 'drawing_align', values: ['center'] }, () => {}), true);
+  assert.equal(routeBlockControl({ header: 'mode', values: ['content content content content content content drawing content'] }, () => {}), false);
+  assert.equal(routeBlockControl({ header: 'block_config', values: ['snd_show image_position left'] }, () => {}), true);
+  assert.equal(routeBlockControl({ header: 'order', values: ['7 6 5 4 3 2 1 0'] }, () => {}), false);
+  assert.equal(routeBlockControl({ header: 'snd_img_1', values: ['x'] }, () => {}), false);
   assert.equal(routeBlockControl({ header: 'sound_title', values: ['x'] }, () => {}), false);
 });
 
@@ -175,7 +177,7 @@ test('wireSocket : un listener par event, réobservation idempotente sur reconne
   const emitted = [];
   const guard = createObserveGuard({ emit: (h) => emitted.push(h) });
   wireSocket(sock, guard, { onStatus: () => {}, onControl: () => {} });
-  for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'control']) {
+  for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'allControls', 'control']) {
     assert.equal(sock.listenerCount(e), 1, `listener unique pour ${e}`);
   }
   sock.fire('connect');            // contenus, image, visibilités et heartbeat
@@ -185,6 +187,22 @@ test('wireSocket : un listener par event, réobservation idempotente sur reconne
   sock.fire('disconnect');         // vide le guard
   sock.fire('connect');            // reconnect -> une nouvelle série
   assert.equal(emitted.length, OBSERVABLE_HEADERS.length * 2);
+});
+
+test('wireSocket : réobserve un header créé après la connexion', () => {
+  const sock = fakeSocket();
+  const emitted = [];
+  const guard = createObserveGuard({ emit: (h) => emitted.push(h) });
+  wireSocket(sock, guard, { onStatus: () => {}, onControl: () => {} });
+
+  sock.fire('connect');
+  assert.equal(emitted.filter((h) => h === 'snd_show').length, 1);
+
+  sock.fire('allControls', { controls: [{ header: 'snd_show' }] });
+  assert.equal(emitted.filter((h) => h === 'snd_show').length, 2);
+
+  sock.fire('allControls', { controls: [{ header: 'snd_show' }] });
+  assert.equal(emitted.filter((h) => h === 'snd_show').length, 2);
 });
 
 // 16. forget() permet de réobserver après un unobserve explicite
@@ -254,7 +272,7 @@ test('freshness : un seul listener par event (pas de doublon wireSocket)', () =>
   const sock = fakeSocket();
   const guard = createObserveGuard({ emit: () => {} });
   wireSocket(sock, guard, { onStatus: () => {}, onControl: () => {} });
-  for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'control']) {
+  for (const e of ['connect', 'reconnect', 'reconnect_attempt', 'disconnect', 'connect_error', 'allControls', 'control']) {
     assert.equal(sock.listenerCount(e), 1, `listener unique pour ${e}`);
   }
 });

@@ -30,8 +30,10 @@ const { mountPublicPage } = await import('../../src/publicPage.js');
 const PUBLIC_PAGE_SRC = readFileSync(new URL('../../src/publicPage.js', import.meta.url), 'utf8');
 const MAIN_CSS_SRC = readFileSync(new URL('../../src/styles/main.css', import.meta.url), 'utf8');
 
-test('CSS drawing retire réellement le contenu hidden du layout flex', () => {
-  assert.match(MAIN_CSS_SRC, /\.block--drawing-mode\s*>\s*\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+test('CSS masque les blocs hidden et borne la typographie personnalisée', () => {
+  assert.match(MAIN_CSS_SRC, /\.block\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+  assert.match(MAIN_CSS_SRC, /font-size:\s*var\(--block-font-size\)\s*!important/);
+  assert.match(MAIN_CSS_SRC, /overflow-wrap:\s*anywhere/);
 });
 
 // --- Fakes locaux à la suite d'orchestration (un seul domaine) ---
@@ -42,8 +44,8 @@ function makeEl() {
   return {
     textContent: '', hidden: false, className: '', value: '', id: '', _attrs: {},
     classList: {
-      add(name) { classes.add(name); },
-      remove(name) { classes.delete(name); },
+      add(...names) { names.forEach((name) => classes.add(name)); },
+      remove(...names) { names.forEach((name) => classes.delete(name)); },
       contains(name) { return classes.has(name); },
     },
     setAttribute(k, v) { this._attrs[k] = v; },
@@ -57,6 +59,7 @@ function makeEl() {
 
 function makeDoc() {
   const byId = new Map();
+  const created = [];
   const getById = (id) => { if (!byId.has(id)) byId.set(id, makeEl()); return byId.get(id); };
   const card = makeEl();
   card._placements = [];
@@ -65,8 +68,13 @@ function makeDoc() {
   card.parentNode = { insertBefore() {} };
   card.nextSibling = null;
   return {
-    _card: card, _byId: byId,
-    createElement: () => makeEl(),
+    _card: card, _byId: byId, _created: created,
+    createElement: (tag) => {
+      const el = makeEl();
+      el.tagName = String(tag).toUpperCase();
+      created.push(el);
+      return el;
+    },
     createTextNode: (t) => ({ textContent: t }),
     getElementById: getById,
     querySelector: (sel) => (sel === 'main.card' ? card : getById(sel.replace(/^#/, ''))),
@@ -304,42 +312,32 @@ test('6d. les six contenus masqués retirent la carte vide et sa bordure', async
   r.teardown();
 });
 
-test('6e. protocole v2 : snd_*, visibility, order et mode pilotent la carte atomiquement', async () => {
+test('6e. protocole blocs : registre fixe, visibilité, typographie et image composable', async () => {
   const { conn, doc, storage, r } = mount();
   await flush();
 
-  conn.getOpts().onControl({ header: 'snd_info_3', values: 'Intro v2' });
-  assert.equal(doc.getElementById('snd-info-3').textContent, 'Intro v2');
-  assert.equal(doc.getElementById('snd-info-3-wrap').hidden, false);
+  conn.getOpts().onControl({ header: 'snd_show', values: 'CANVAS LAB' });
+  assert.equal(doc.getElementById('sound-show-name').textContent, 'CANVAS LAB');
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, false);
   assert.equal(doc.getElementById('sound-title-wrap').hidden, true, 'les champs v2 non renseignés ne gardent pas les valeurs par défaut');
   assert.equal(storage.getItem(STORAGE_KEY), null, 'v2 reste éphémère pour cette itération');
 
   conn.getOpts().onControl({ header: 'snd_title', values: 'Titre v2' });
-  conn.getOpts().onControl({ header: 'snd_img_2', values: 'https://example.com/second.png' });
-  conn.getOpts().onControl({ header: 'visibility', values: '1 0 0 0 1 0 0 1' });
-  assert.equal(doc.getElementById('snd-info-3-wrap').hidden, false);
+  conn.getOpts().onControl({ header: 'block_config', values: 'snd_title image_url https://example.com/cover.png' });
+  conn.getOpts().onControl({ header: 'block_config', values: 'snd_title image_position right' });
+  conn.getOpts().onControl({ header: 'block_config', values: 'snd_title text_position center' });
+  conn.getOpts().onControl({ header: 'block_config', values: 'snd_title font_size 32px' });
+  conn.getOpts().onControl({ header: 'visibility', values: '1 1 0 0 0 0 1 0' });
+  assert.equal(doc.getElementById('sound-show-name-wrap').hidden, false);
   assert.equal(doc.getElementById('sound-title-wrap').hidden, false);
-  assert.equal(doc.getElementById('snd-img-2-wrap').hidden, false);
   assert.equal(doc.getElementById('sound-subtitle-wrap').hidden, true);
+  assert.equal(doc.getElementById('sound-title-wrap').classList.contains('block--media-right'), true);
+  assert.equal(doc.getElementById('sound-title-wrap').classList.contains('block--text-center'), true);
+  assert.equal(doc.getElementById('sound-title-wrap').getAttribute('style'), '--block-font-size:32px');
 
-  conn.getOpts().onControl({ header: 'mode', values: 'content content content content content content drawing content' });
-  assert.equal(doc.getElementById('sound-image-wrap').classList.contains('block--drawing-mode'), true);
-  assert.equal(doc.getElementById('sound-image').hidden, true);
-  conn.getOpts().onControl({ header: 'drawing_preset', values: 'bars' });
-  conn.getOpts().onControl({ header: 'drawing_align', values: 'center' });
-  assert.equal(doc.getElementById('sound-image-wrap').classList.contains('block--drawing-align-center'), true);
-
-  conn.getOpts().onControl({ header: 'order', values: '4 0 7 1 2 3 5 6' });
-  assert.deepEqual(doc._card._placements.slice(-8), [
-    ['append', doc.getElementById('sound-title-wrap')],
-    ['append', doc.getElementById('snd-info-3-wrap')],
-    ['append', doc.getElementById('snd-img-2-wrap')],
-    ['append', doc.getElementById('sound-subtitle-wrap')],
-    ['append', doc.getElementById('sound-description-wrap')],
-    ['append', doc.getElementById('sound-show-name-wrap')],
-    ['append', doc.getElementById('sound-author-wrap')],
-    ['append', doc.getElementById('sound-image-wrap')],
-  ]);
+  const beforeOrder = doc._card._placements.length;
+  conn.getOpts().onControl({ header: 'order', values: '7 6 5 4 3 2 1 0' });
+  assert.equal(doc._card._placements.length, beforeOrder, 'order Max est ignoré');
 
   conn.getOpts().onControl({ header: 'sound_title', values: 'Ancien titre ignoré' });
   assert.equal(doc.getElementById('sound-title').textContent, 'Titre v2');

@@ -62,26 +62,47 @@ Séparation : **connexion** (`collabHub/socketClient`) · **routage**
 render) ne dépendent ni de `import.meta.env` ni du `document` global — testables
 en Node.
 
-## Protocole v2 des 8 blocs
+## Protocole des 8 blocs fixes
 
-Le mode v2 pilote les 8 blocs avec les headers `snd_*`, plus cinq contrôles
-de layout éphémères :
+Le registre Max/MSP est fixe et partagé par le routeur, le DOM et les tests :
+
+`0 snd_show`, `1 snd_title`, `2 snd_author`, `3 snd_info_1`,
+`4 snd_info_2`, `5 snd_info_3`, `6 snd_info_4`, `7 snd_info_5`.
+
+`snd_img_1`, `snd_img_2` et `order` ne font pas partie de ce registre. Max ne
+peut pas modifier l'ordre des blocs.
 
 - `visibility` : 8 booléens `0/1`, un par bloc.
-- `order` : permutation exacte de `0` à `7`.
-- `mode` : 8 valeurs `content` ou `drawing`.
-- `drawing_preset` : un preset visuel fermé pour les blocs en `drawing`.
-- `drawing_align` : alignement horizontal du canvas dans son bloc.
+- `block_config` : configuration déclarative d'un bloc.
 
-`mode` permet de faire passer n'importe lequel des 8 blocs en `drawing`. Dans
-ce cas, le bloc n'affiche plus son contenu texte/image habituel et rend à la
-place un `canvas` de test fixe `128x128`, vide mais stable, prêt pour les
-essais graphiques pilotés depuis Max/MSP. Comme `visibility` et `order`, ce
-mode est éphémère : il ne touche ni le contenu persistant ni `localStorage`.
+### Texte et image dans chaque bloc
 
-`drawing_preset` accepte pour l'instant `crosshair`, `grid`, `dot`, `frame` et
-`bars`. `drawing_align` accepte `left`, `center` et `right`. Ces deux headers
-s'appliquent aux blocs actuellement en mode `drawing`.
+La syntaxe Max est `block_config <block_id> <propriété> <valeur>`. Exemples :
+
+```text
+push all block_config snd_show image_url /images/ezdac.png
+push all block_config snd_show image_position left
+push all block_config snd_show image_width 96px
+push all block_config snd_show image_fit contain
+push all block_config snd_show text_position center
+push all block_config snd_title font_size 32px
+push all block_config snd_title font_size default
+push all block_config snd_show foreground_color white
+push all block_config snd_title background_color #112233
+```
+
+Propriétés : `text`, `text_position`, `font_size`, `image_url`, `image_visible`, `image_position`,
+`image_width`, `image_height`, `image_fit`, `image_align`, `image_crop`,
+`background_color`, `foreground_color`. Les positions sont `above`, `below`,
+`left`, `right`, `background`; les fits `contain`, `cover`, `fill`, `none`.
+Les dimensions acceptent `auto`, `1..2000px` ou `1..100%`. Seules les URL
+`http(s)` et `/images/...`, les couleurs hexadécimales, `black`, `white` et
+`transparent` sont acceptées. Toute configuration invalide est ignorée sans
+modifier l'état courant.
+
+`text_position` accepte `left`, `center` ou `right`, avec ou sans image.
+`font_size` accepte uniquement des pixels entiers de `8px` à `96px`.
+La valeur `default` rétablit la typographie d'origine du seul bloc ciblé.
 
 ## Variables d'environnement
 

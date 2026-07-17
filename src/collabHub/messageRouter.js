@@ -37,16 +37,24 @@ export const TEXT_VISIBILITY_HEADERS = [
 // l'image, sans modifier sa valeur ou sa visibilité.
 export const SHOW_NAME_POSITION_HEADERS = ['sound_show_name_position'];
 
-// Protocole v2 (issue #42) : huit blocs ordonnables. Les anciens headers
-// sound_* restent observés pendant la migration mais ne sont plus requis par
-// le nouveau patch Max.
-export const BLOCK_IDS = [
-  'snd_info_3', 'snd_info_1', 'snd_info_2', 'snd_show',
-  'snd_title', 'snd_author', 'snd_img_1', 'snd_img_2',
-];
-export const BLOCK_TEXT_HEADERS = BLOCK_IDS.slice(0, 6);
-export const BLOCK_IMAGE_HEADERS = BLOCK_IDS.slice(6);
-export const BLOCK_LAYOUT_HEADERS = ['visibility', 'order', 'mode', 'drawing_preset', 'drawing_align'];
+// Registre fixe des huit entrées Max/MSP (issues #54/#55). Toutes les couches
+// web dérivent leurs identifiants de cette unique source de vérité.
+export const BLOCK_REGISTRY = Object.freeze([
+  Object.freeze({ index: 0, id: 'snd_show' }),
+  Object.freeze({ index: 1, id: 'snd_title' }),
+  Object.freeze({ index: 2, id: 'snd_author' }),
+  Object.freeze({ index: 3, id: 'snd_info_1' }),
+  Object.freeze({ index: 4, id: 'snd_info_2' }),
+  Object.freeze({ index: 5, id: 'snd_info_3' }),
+  Object.freeze({ index: 6, id: 'snd_info_4' }),
+  Object.freeze({ index: 7, id: 'snd_info_5' }),
+]);
+export const BLOCK_IDS = Object.freeze(BLOCK_REGISTRY.map(({ id }) => id));
+export const BLOCK_TEXT_HEADERS = BLOCK_IDS;
+export const BLOCK_CONFIG_HEADER = 'block_config';
+export const BLOCK_LAYOUT_HEADERS = Object.freeze([
+  'visibility', BLOCK_CONFIG_HEADER,
+]);
 
 // Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler
 // son activité. Jamais affiché comme contenu, jamais persisté.
