@@ -8,6 +8,8 @@ import { KNOWN_HEADERS, OBSERVABLE_HEADERS } from './messageRouter.js';
 
 export function createObserveGuard({ emit }) {
   const observed = new Set();
+  const available = new Set();
+  const retriedAvailable = new Set();
   let connected = false;
 
   // Émet observeControl pour `header` ssi connecté ET pas déjà observé.
@@ -21,15 +23,47 @@ export function createObserveGuard({ emit }) {
 
   return {
     // connected=true : prêt à observer. connected=false : vrai disconnect -> on vide.
-    setConnected(c) { connected = c; if (!c) observed.clear(); },
+    setConnected(c) {
+      connected = c;
+      if (!c) {
+        observed.clear();
+        available.clear();
+        retriedAvailable.clear();
+      }
+    },
     observeHeaderOnce,
     observeKnownHeadersOnce(headers = KNOWN_HEADERS) { return headers.map(observeHeaderOnce); },
+    // Collab-Hub ignore observeControl si le header n'existe pas encore. Quand
+    // allControls annonce son apparition, on retente une fois l'abonnement.
+    refreshAvailableControls(controls = []) {
+      const next = new Set(
+        (Array.isArray(controls) ? controls : [])
+          .map((control) => control?.header)
+          .filter((header) => typeof header === 'string' && header !== ''),
+      );
+
+      for (const header of available) {
+        if (!next.has(header)) retriedAvailable.delete(header);
+      }
+      available.clear();
+      next.forEach((header) => available.add(header));
+
+      if (!connected) return [];
+      const retried = [];
+      for (const header of available) {
+        if (!observed.has(header) || retriedAvailable.has(header)) continue;
+        emit(header);
+        retriedAvailable.add(header);
+        retried.push(header);
+      }
+      return retried;
+    },
     // Permet de réobserver après un unobserve explicite (diagnostic).
     forget(header) { observed.delete(header); },
     isObserved: (h) => observed.has(h),
     observedCount: () => observed.size,
     observedHeaders: () => [...observed],
-    reset() { observed.clear(); },
+    reset() { observed.clear(); available.clear(); retriedAvailable.clear(); },
   };
 }
 
@@ -49,6 +83,7 @@ export function wireSocket(socket, guard, { onStatus, onControl }) {
   socket.on('reconnect_attempt', () => onStatus('reconnecting'));
   socket.on('disconnect', () => { guard.setConnected(false); onStatus('disconnected'); });
   socket.on('connect_error', () => onStatus('error'));
+  socket.on('allControls', (data) => guard.refreshAvailableControls(data?.controls));
   socket.on('control', onControl);
   return socket;
 }

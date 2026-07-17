@@ -53,7 +53,7 @@ export const BLOCK_IDS = Object.freeze(BLOCK_REGISTRY.map(({ id }) => id));
 export const BLOCK_TEXT_HEADERS = BLOCK_IDS;
 export const BLOCK_CONFIG_HEADER = 'block_config';
 export const BLOCK_LAYOUT_HEADERS = Object.freeze([
-  'visibility', 'mode', 'drawing_preset', 'drawing_align', BLOCK_CONFIG_HEADER,
+  'visibility', BLOCK_CONFIG_HEADER,
 ]);
 
 // Header technique (Lot 3B) : heartbeat périodique publié par Max pour signaler

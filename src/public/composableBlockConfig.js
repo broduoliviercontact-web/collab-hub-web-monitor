@@ -8,7 +8,7 @@ const CROPS = ['center', 'top', 'right', 'bottom', 'left', 'top-left', 'top-righ
 const COLORS = ['transparent', 'black', 'white'];
 
 export const BLOCK_CONFIG_PROPERTIES = Object.freeze([
-  'text', 'image_url', 'image_visible', 'image_position', 'image_width',
+  'text', 'text_position', 'font_size', 'image_url', 'image_visible', 'image_position', 'image_width',
   'image_height', 'image_fit', 'image_align', 'image_crop',
   'background_color', 'foreground_color',
 ]);
@@ -16,6 +16,8 @@ export const BLOCK_CONFIG_PROPERTIES = Object.freeze([
 export function createDefaultBlockConfig() {
   return {
     text: '',
+    textPosition: 'left',
+    fontSize: '',
     imageUrl: '',
     imageVisible: true,
     imagePosition: 'above',
@@ -48,6 +50,15 @@ function parseDimension(value) {
   return `${amount}${unit}`;
 }
 
+function parseFontSize(value) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === '' || normalized === 'default') return '';
+  const match = normalized.match(/^(\d{1,2})px$/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  return amount >= 8 && amount <= 96 ? `${amount}px` : null;
+}
+
 function parseColor(value) {
   const normalized = value.trim().toLowerCase();
   if (normalized === 'default' || normalized === '') return '';
@@ -69,7 +80,9 @@ export function parseBlockConfig(values) {
   if (!BLOCK_IDS.includes(blockId) || !BLOCK_CONFIG_PROPERTIES.includes(property)) return null;
 
   let parsedValue = value;
-  if (property === 'image_url') {
+  if (property === 'font_size') parsedValue = parseFontSize(value);
+  else if (property === 'text_position') parsedValue = parseEnum(value, ALIGNS);
+  else if (property === 'image_url') {
     parsedValue = value.trim();
     if (parsedValue && !isSafeImageSource(parsedValue)) return null;
   } else if (property === 'image_visible') {
@@ -89,4 +102,3 @@ export function parseBlockConfig(values) {
 export function configKey(property) {
   return property.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
-

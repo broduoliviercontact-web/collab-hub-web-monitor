@@ -30,9 +30,10 @@ const { mountPublicPage } = await import('../../src/publicPage.js');
 const PUBLIC_PAGE_SRC = readFileSync(new URL('../../src/publicPage.js', import.meta.url), 'utf8');
 const MAIN_CSS_SRC = readFileSync(new URL('../../src/styles/main.css', import.meta.url), 'utf8');
 
-test('CSS drawing retire réellement le contenu hidden du layout flex', () => {
-  assert.match(MAIN_CSS_SRC, /\.block--drawing-mode\s*>\s*\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+test('CSS masque les blocs hidden et borne la typographie personnalisée', () => {
   assert.match(MAIN_CSS_SRC, /\.block\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+  assert.match(MAIN_CSS_SRC, /font-size:\s*var\(--block-font-size\)\s*!important/);
+  assert.match(MAIN_CSS_SRC, /overflow-wrap:\s*anywhere/);
 });
 
 // --- Fakes locaux à la suite d'orchestration (un seul domaine) ---
@@ -311,7 +312,7 @@ test('6d. les six contenus masqués retirent la carte vide et sa bordure', async
   r.teardown();
 });
 
-test('6e. protocole blocs : registre fixe, visibilité, canvas et image composable', async () => {
+test('6e. protocole blocs : registre fixe, visibilité, typographie et image composable', async () => {
   const { conn, doc, storage, r } = mount();
   await flush();
 
@@ -324,17 +325,15 @@ test('6e. protocole blocs : registre fixe, visibilité, canvas et image composab
   conn.getOpts().onControl({ header: 'snd_title', values: 'Titre v2' });
   conn.getOpts().onControl({ header: 'block_config', values: 'snd_title image_url https://example.com/cover.png' });
   conn.getOpts().onControl({ header: 'block_config', values: 'snd_title image_position right' });
+  conn.getOpts().onControl({ header: 'block_config', values: 'snd_title text_position center' });
+  conn.getOpts().onControl({ header: 'block_config', values: 'snd_title font_size 32px' });
   conn.getOpts().onControl({ header: 'visibility', values: '1 1 0 0 0 0 1 0' });
   assert.equal(doc.getElementById('sound-show-name-wrap').hidden, false);
   assert.equal(doc.getElementById('sound-title-wrap').hidden, false);
   assert.equal(doc.getElementById('sound-subtitle-wrap').hidden, true);
   assert.equal(doc.getElementById('sound-title-wrap').classList.contains('block--media-right'), true);
-
-  conn.getOpts().onControl({ header: 'mode', values: 'content content content content content content drawing content' });
-  assert.equal(doc.getElementById('snd-info-4-wrap').classList.contains('block--drawing-mode'), true);
-  conn.getOpts().onControl({ header: 'drawing_preset', values: 'bars' });
-  conn.getOpts().onControl({ header: 'drawing_align', values: 'center' });
-  assert.equal(doc.getElementById('snd-info-4-wrap').classList.contains('block--drawing-align-center'), true);
+  assert.equal(doc.getElementById('sound-title-wrap').classList.contains('block--text-center'), true);
+  assert.equal(doc.getElementById('sound-title-wrap').getAttribute('style'), '--block-font-size:32px');
 
   const beforeOrder = doc._card._placements.length;
   conn.getOpts().onControl({ header: 'order', values: '7 6 5 4 3 2 1 0' });
