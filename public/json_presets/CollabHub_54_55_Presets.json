@@ -1,0 +1,321 @@
+{
+    "schema": "collab-hub-block-presets",
+    "version": 1,
+    "exportedAt": "2026-07-17T16:40:26.498Z",
+    "presets": [
+        {
+            "name": "Go One",
+            "blocks": [
+                {
+                    "id": "snd_show",
+                    "text": "some sounds • *SONIFICATIONS*",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "24px",
+                        "image_visible": "0",
+                        "image_position": "left",
+                        "image_width": "96px",
+                        "image_height": "96px",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "#112233",
+                        "foreground_color": "white"
+                    }
+                },
+                {
+                    "id": "snd_title",
+                    "text": "jeu de GO",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "36px",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_author",
+                    "text": "*Xavier Descarpentries*",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "14px",
+                        "image_visible": "0",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_1",
+                    "text": "Sous-titre",
+                    "visible": 0,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "default",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_2",
+                    "text": "Here, i use sine waves in some sort off additive synthesis. I use very small steps for pitches  in [EDO]{https://en.xen.wiki/w/EDO} (EDO 2048). Sometimes chords, sometimes arpeggios, then i feed a reverb made with [Max/Msp]{https://cycling74.com/products/max} (yafr2) with the sine waves.||The **picture** is the actual end positions for the game which genrated the sound you're listening to.",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "/images/GO_XD/go_game_00.png",
+                        "text_position": "left",
+                        "font_size": "15px",
+                        "image_visible": "1",
+                        "image_position": "right",
+                        "image_width": "280px",
+                        "image_height": "180px",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_3",
+                    "text": "**more info :** this is a 13 x 13 [goban]{https://en.wikipedia.org/wiki/Go_equipment#Goban}. I use the lines and columns as binary numbers (13 bits here), using either the black or the white stones as 1 and the empty intersections as 0, sometimes big endian, sometimes small endian.",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "13px",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_4",
+                    "text": "Bloc texte ou image",
+                    "visible": 0,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "default",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_5",
+                    "text": "Dernier bloc",
+                    "visible": 0,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "default",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Chroma One",
+            "blocks": [
+                {
+                    "id": "snd_show",
+                    "text": "some sounds • *CHROMATISMES*",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "24px",
+                        "image_visible": "0",
+                        "image_position": "left",
+                        "image_width": "160px",
+                        "image_height": "96px",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "#112233",
+                        "foreground_color": "white"
+                    }
+                },
+                {
+                    "id": "snd_title",
+                    "text": "Fractal loops ",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "36px",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_author",
+                    "text": "*Xavier Descarpentries*",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "14px",
+                        "image_visible": "0",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_1",
+                    "text": "Sous-titre",
+                    "visible": 0,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "default",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_2",
+                    "text": "The **spectral** representation of the current sound.",
+                    "visible": 1,
+                    "config": {
+                        "image_url": "/images/spectre_chroma.png",
+                        "text_position": "center",
+                        "font_size": "20px",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_3",
+                    "text": "**more info :** this is a 13 x 13 [goban]{https://en.wikipedia.org/wiki/Go_equipment#Goban}. I use the lines and columns as binary numbers (13 bits here), using either the black or the white stones as 1 and the empty intersections as 0, sometimes big endian, sometimes small endian.",
+                    "visible": 0,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "13px",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_4",
+                    "text": "Bloc texte ou image",
+                    "visible": 0,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "default",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                },
+                {
+                    "id": "snd_info_5",
+                    "text": "Dernier bloc",
+                    "visible": 0,
+                    "config": {
+                        "image_url": "",
+                        "text_position": "left",
+                        "font_size": "default",
+                        "image_visible": "1",
+                        "image_position": "above",
+                        "image_width": "auto",
+                        "image_height": "auto",
+                        "image_fit": "contain",
+                        "image_align": "center",
+                        "image_crop": "center",
+                        "background_color": "default",
+                        "foreground_color": "default"
+                    }
+                }
+            ]
+        }
+    ]
+}
